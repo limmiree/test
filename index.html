@@ -3,462 +3,821 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>삼각비 농구 게임 🏀</title>
-    
-    <!-- Tailwind CSS for styling -->
+    <title>삼각비 농구 게임</title>
     <script src="https://cdn.tailwindcss.com"></script>
-    
-    <!-- TensorFlow.js 및 Teachable Machine 에러 방지용 임시 객체 선언 -->
-    <script>var exports = {};</script>
-
-    <!-- TensorFlow.js & Teachable Machine Pose Models -->
     <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@1.3.1/dist/tf.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/@teachablemachine/pose@0.8/dist/teachablemachine-pose.min.js"></script>
-
+    <script src="https://cdn.jsdelivr.net/npm/@teachablemachine/image@0.8/dist/teachablemachine-image.min.js"></script>
     <style>
-        body { font-family: 'Inter', sans-serif; background-color: #f0fdfa; }
-        #webcam-container canvas { border-radius: 0.5rem; width: 100%; max-width: 300px; height: auto; }
-        #game-canvas { width: 100%; height: auto; background-color: #ffffff; }
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;700&display=swap');
+        body { font-family: 'Inter', sans-serif; background-color: #ecfdf5; }
+        
+        /* 캔버스 자동 비율(반응형) 스케일링 설정 */
+        #gameCanvas { 
+            width: 100%; 
+            height: auto; 
+            aspect-ratio: 4 / 3; 
+            object-fit: contain; 
+        }
+
+        /* 티처블 머신 주입 캔버스 반응형 설정 */
+        #webcam-container canvas {
+            width: 100% !important;
+            height: auto !important;
+            object-fit: cover;
+            border-radius: 0.5rem;
+        }
+        
+        /* 팝업 애니메이션 */
+        .pop-up { animation: pop 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275) forwards; }
+        @keyframes pop {
+            0% { transform: translate(-50%, -50%) scale(0.5); opacity: 0; }
+            100% { transform: translate(-50%, -50%) scale(1); opacity: 1; }
+        }
     </style>
 </head>
-<body class="min-h-screen flex flex-col items-center py-8 px-4">
+<body class="p-3 md:p-6 lg:p-8 flex flex-col items-center min-h-screen">
 
-    <div class="max-w-5xl w-full bg-white rounded-2xl shadow-xl overflow-hidden">
-        <!-- Header -->
-        <!-- Header -->
-        <div class="bg-teal-600 text-white py-4 px-6 text-center">
-            <h1 class="text-3xl font-bold">🏀 삼각비 농구 게임</h1>
-            <p class="text-teal-100 mt-2">웹캠 앞에서 정답 높이에 맞는 자세를 취해 슛을 쏘세요!</p>
-        </div>
+    <!-- Header Banner -->
+    <div class="w-full max-w-6xl bg-teal-600 text-white text-center py-4 md:py-6 rounded-t-2xl shadow-lg relative z-10">
+        <h1 class="text-2xl md:text-3xl font-bold mb-1 md:mb-2">🏀 삼각비 농구 게임</h1>
+        <p class="text-sm md:text-base text-teal-100 px-2">제시된 삼각비 문제를 풀고, 정답이 있는 보기 번호(1m, 2m, 3m 자세)를 취해 슛을 쏘세요!</p>
+    </div>
 
-        <!-- Main Content -->
-        <div class="p-4 md:p-6 grid grid-cols-1 lg:grid-cols-3 gap-4 md:gap-6">
-            
-            <!-- 1. 현재 문제 (모바일: 최상단, 데스크탑: 좌측 상단) -->
-            <div class="order-1 lg:col-span-1 bg-gray-100 p-4 rounded-xl text-center shadow-sm">
-                <h2 class="text-xl font-bold text-gray-700 mb-2">현재 문제</h2>
-                <div id="problem-display" class="text-lg md:text-xl font-semibold text-teal-700 bg-teal-50 p-3 rounded-lg min-h-[80px] flex items-center justify-center break-keep">
-                    게임을 시작해주세요!
-                </div>
-                <p class="text-sm text-gray-500 mt-2">정답: 1m, 2m, 3m 중 하나</p>
-            </div>
-
-            <!-- 2. 게임 캔버스 (모바일: 중앙, 데스크탑: 우측 전체 영역) -->
-            <div class="order-2 lg:col-span-2 lg:row-span-3 relative w-full flex bg-white border-2 border-gray-200 rounded-xl overflow-hidden shadow-sm">
-                <canvas id="game-canvas" class="w-full h-auto aspect-[8/5] block"></canvas>
-                
-                <!-- Feedback Overlay -->
-                <div id="feedback-overlay" class="absolute inset-0 flex items-center justify-center pointer-events-none opacity-0 transition-opacity duration-300">
-                    <span id="feedback-text" class="text-3xl md:text-5xl font-black text-white px-6 md:px-8 py-3 md:py-4 bg-green-500 rounded-full shadow-2xl transform scale-50 transition-transform duration-300">
-                        정답! 🏀
-                    </span>
-                </div>
-            </div>
-
-            <!-- 3. 카메라 (모바일: 하단, 데스크탑: 좌측 중앙) -->
-            <div class="order-3 lg:col-span-1 bg-gray-100 p-4 rounded-xl flex flex-col items-center shadow-sm">
-                <h2 class="text-lg font-bold text-gray-700 mb-2">나의 자세 (AI 인식)</h2>
-                <div id="webcam-container" class="bg-gray-200 rounded-lg flex items-center justify-center overflow-hidden aspect-square w-full max-w-[250px]">
-                    <span class="text-gray-400 text-sm" id="webcam-placeholder">카메라 대기 중...</span>
-                </div>
-                <div id="label-container" class="mt-3 w-full space-y-1"></div>
-                <button id="start-btn" onclick="initGame()" class="mt-4 w-full bg-teal-500 hover:bg-teal-600 text-white font-bold py-3 px-4 rounded-lg transition-colors shadow-md text-sm md:text-base">
-                    ▶️ 게임 시작 (웹캠 허용)
-                </button>
-                <div id="loading-msg" class="hidden text-teal-600 font-semibold mt-2 animate-pulse text-sm md:text-base">
-                    모델을 불러오는 중입니다...
-                </div>
-            </div>
-
-            <!-- 4. 점수 (모바일: 최하단, 데스크탑: 좌측 하단) -->
-            <div class="order-4 lg:col-span-1 bg-teal-50 p-4 rounded-xl text-center shadow-sm border border-teal-100 flex flex-col justify-center">
-                <h2 class="text-lg font-bold text-teal-800">점수</h2>
-                <p id="score-display" class="text-3xl md:text-4xl font-black text-teal-600">0</p>
-            </div>
-        </div>
+    <!-- Main Content (Responsive Grid) -->
+    <div class="w-full max-w-6xl grid grid-cols-1 lg:grid-cols-3 gap-4 md:gap-6 bg-white shadow-xl rounded-b-2xl p-4 md:p-6 border-x-4 border-b-4 border-teal-50/50">
         
-        <!-- Instructions Footer -->
-        <div class="bg-gray-50 p-4 border-t border-gray-200 text-sm text-gray-600">
-            <strong>게임 방법:</strong> 주어진 거리와 올려다본 각도를 보고 <code>거리 × tan(각도)</code>를 계산하여 골대의 높이(1m, 2m, 3m)를 구하세요. 카메라 앞에서 정답 높이에 해당하는 자세를 약 1초간 유지하면 자동으로 슛을 쏩니다!
+        <!-- Block 1: Problem Box (Order 1 on Mobile, Left-Top on Desktop) -->
+        <div class="order-1 lg:col-span-1 lg:col-start-1 lg:row-start-1 flex flex-col">
+            <div class="bg-gray-50 border border-gray-200 p-4 rounded-xl shadow-sm text-center relative h-full flex flex-col justify-center">
+                <h3 class="font-extrabold text-gray-800 mb-2 md:mb-3 text-xl md:text-2xl border-b pb-2">현재 문제</h3>
+                <p class="text-gray-700 mb-3 text-lg md:text-xl leading-relaxed text-left pl-2">
+                    골대까지의 거리는 <span id="prob-base" class="font-extrabold text-teal-600 text-xl md:text-2xl">3</span>m, 
+                    올려다본 각도는 <span id="prob-angle" class="font-extrabold text-red-500 text-xl md:text-2xl">45</span>°일 때<br>
+                    <span class="font-extrabold text-gray-900 text-lg md:text-xl mt-2 inline-block">선수의 눈의 높이와 골대 높이의 차이 x는?</span>
+                </p>
+                <!-- Options -->
+                <div class="flex justify-center gap-1.5 md:gap-2 mb-3 md:mb-4">
+                    <div id="opt-0" class="flex-1 border-2 border-teal-300 bg-white text-teal-700 py-2 md:py-3 rounded-md font-bold shadow-sm text-lg md:text-xl">① 2m</div>
+                    <div id="opt-1" class="flex-1 border-2 border-teal-300 bg-white text-teal-700 py-2 md:py-3 rounded-md font-bold shadow-sm text-lg md:text-xl">② 3m</div>
+                    <div id="opt-2" class="flex-1 border-2 border-teal-300 bg-white text-teal-700 py-2 md:py-3 rounded-md font-bold shadow-sm text-lg md:text-xl">③ 4m</div>
+                </div>
+
+                <!-- Next Problem Button -->
+                <button id="next-btn" onclick="nextProblem()" class="w-full bg-teal-600 hover:bg-teal-700 active:bg-teal-800 text-white font-bold py-2.5 md:py-3.5 px-4 rounded-lg shadow transition transform hover:scale-[1.02] active:scale-[0.98] flex items-center justify-center gap-2 text-base md:text-lg mt-auto">
+                    <span>다음 문제로 넘어가기</span> ➡️
+                </button>
+            </div>
         </div>
+
+        <!-- Block 2: Canvas (Order 2 on Mobile, Right-Spanning on Desktop) -->
+        <div class="order-2 lg:order-2 lg:col-span-2 lg:col-start-2 lg:row-start-1 lg:row-span-2 bg-white rounded-xl relative border border-gray-200 overflow-hidden shadow-sm flex items-center justify-center">
+            <canvas id="gameCanvas"></canvas>
+            
+            <!-- Result Popup (정답/오답 안내 및 다시 도전 버튼) -->
+            <div id="result-popup" class="hidden absolute top-1/2 left-1/2 pop-up text-white px-6 py-4 md:px-8 md:py-6 rounded-2xl font-bold text-center shadow-2xl z-20 flex flex-col items-center gap-3 min-w-[240px]">
+                <div id="result-text" class="text-2xl md:text-4xl">오답! ❌</div>
+                <button id="retry-btn" onclick="retryProblem()" class="hidden bg-white text-red-600 hover:bg-red-50 font-extrabold py-2 px-5 rounded-full shadow-md text-base md:text-lg transition transform hover:scale-105">
+                    다시 도전하기 🔄
+                </button>
+            </div>
+        </div>
+
+        <!-- Block 3: AI Recognition & Score (Order 3 on Mobile, Left-Bottom on Desktop) -->
+        <div class="order-3 lg:col-span-1 lg:col-start-1 lg:row-start-2 flex flex-col gap-4">
+            
+            <!-- AI Box -->
+            <div class="bg-white border border-gray-200 rounded-xl p-4 shadow-sm flex flex-col items-center">
+                <h3 class="font-bold text-gray-800 mb-2 md:mb-3 text-base md:text-lg">나의 자세 (AI 인식)</h3>
+                
+                <div id="webcam-container" class="w-full max-w-[240px] lg:max-w-full bg-gray-900 rounded-lg aspect-square mb-2 overflow-hidden flex items-center justify-center relative shadow-inner">
+                    <button id="start-btn" onclick="initWebcam()" class="bg-teal-500 hover:bg-teal-600 text-white font-bold py-2 md:py-3 px-4 md:px-6 rounded-full shadow-lg transition transform hover:scale-105 absolute z-10 text-sm md:text-base">
+                        ▶️ 웹캠 켜기
+                    </button>
+                </div>
+                
+                <!-- Dynamic Recognition Status Text & Progress Bar -->
+                <div id="recognition-status-box" class="w-full mt-1 mb-3">
+                    <div id="recognition-status" class="w-full text-gray-500 font-bold text-center text-xs md:text-sm p-2 rounded bg-gray-50 transition-colors">
+                        웹캠을 켜고 자세를 취해주세요.
+                    </div>
+                    <!-- Pose Hold Gauge Bar -->
+                    <div id="hold-gauge-container" class="w-full bg-gray-200 h-2 rounded-full overflow-hidden mt-1 md:mt-2 hidden">
+                        <div id="hold-gauge-bar" class="bg-teal-500 h-full w-0 transition-all duration-75"></div>
+                    </div>
+                </div>
+
+                <!-- Progress Bars -->
+                <div id="label-container" class="w-full flex flex-col gap-1.5 md:gap-2 mb-3 md:mb-5">
+                    <div class="flex items-center text-[10px] md:text-xs font-bold text-gray-600">
+                        <span class="w-14 md:w-16 text-right mr-2">①번:</span>
+                        <div class="flex-1 bg-gray-200 h-2 md:h-3 rounded-full overflow-hidden"><div id="bar-0" class="bg-blue-400 h-full w-0 transition-all duration-100"></div></div>
+                        <span id="prob-0" class="w-8 md:w-10 text-right ml-1">0.00</span>
+                    </div>
+                    <div class="flex items-center text-[10px] md:text-xs font-bold text-gray-600">
+                        <span class="w-14 md:w-16 text-right mr-2">②번:</span>
+                        <div class="flex-1 bg-gray-200 h-2 md:h-3 rounded-full overflow-hidden"><div id="bar-1" class="bg-green-400 h-full w-0 transition-all duration-100"></div></div>
+                        <span id="prob-1" class="w-8 md:w-10 text-right ml-1">0.00</span>
+                    </div>
+                    <div class="flex items-center text-[10px] md:text-xs font-bold text-gray-600">
+                        <span class="w-14 md:w-16 text-right mr-2">③번:</span>
+                        <div class="flex-1 bg-gray-200 h-2 md:h-3 rounded-full overflow-hidden"><div id="bar-2" class="bg-red-400 h-full w-0 transition-all duration-100"></div></div>
+                        <span id="prob-2" class="w-8 md:w-10 text-right ml-1">0.00</span>
+                    </div>
+                </div>
+
+                <!-- Manual Test Buttons -->
+                <div class="w-full border-t pt-3">
+                    <div class="text-[10px] md:text-xs text-gray-400 mb-1.5 md:mb-2 text-center">웹캠 없이 수동 테스트하기 (클릭)</div>
+                    <div class="flex justify-center gap-1.5 md:gap-2">
+                        <button id="manual-btn-0" onclick="triggerShoot(0)" class="flex-1 bg-gray-200 hover:bg-gray-300 text-gray-700 py-1.5 md:py-2 rounded font-bold text-xs md:text-sm transition">① 2m</button>
+                        <button id="manual-btn-1" onclick="triggerShoot(1)" class="flex-1 bg-gray-200 hover:bg-gray-300 text-gray-700 py-1.5 md:py-2 rounded font-bold text-xs md:text-sm transition">② 3m</button>
+                        <button id="manual-btn-2" onclick="triggerShoot(2)" class="flex-1 bg-gray-200 hover:bg-gray-300 text-gray-700 py-1.5 md:py-2 rounded font-bold text-xs md:text-sm transition">③ 4m</button>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Score Box -->
+            <div class="bg-teal-50 border border-teal-100 p-3 md:p-4 rounded-xl shadow-sm text-center">
+                <h3 class="font-bold text-teal-800 text-base md:text-lg mb-0.5 md:mb-1">점수</h3>
+                <div id="score" class="text-3xl md:text-4xl font-extrabold text-teal-600">0</div>
+            </div>
+        </div>
+
+    </div>
+
+    <!-- Instructions -->
+    <div class="w-full max-w-6xl bg-gray-50 border border-gray-200 p-4 md:p-5 rounded-lg mt-4 md:mt-6 shadow-sm text-xs md:text-sm text-gray-700">
+        <h4 class="font-bold text-gray-800 mb-2">📝 게임 방법</h4>
+        <ul class="list-disc pl-5 space-y-1">
+            <li>화면에 제시되는 <strong>삼각비 문제(골대로부터의 거리와 각도)</strong>를 보고 선수의 눈의 높이와 골대 높이의 차이를 계산하세요. (공식: 높이 차 = 골대까지의 거리 × tan(각도))</li>
+            <li>계산한 높이 차이가 <strong>보기 1번(①), 2번(②), 3번(③) 중 몇 번째인지</strong> 확인하세요.</li>
+            <li>웹캠 앞에서 <strong>해당 보기 번호에 맞는 자세</strong>를 약 1.5초간 유지하면 슛을 쏸니다!</li>
+            <li>정답 보기를 선택하여 정확한 높이로 슛을 쏘면 골인! 점수가 올라갑니다.</li>
+            <li>틀린 경우 <strong>'다시 도전하기 🔄'</strong> 버튼을 눌러 정답을 다시 맞출 수 있습니다.</li>
+        </ul>
     </div>
 
     <script>
-        // 제공해주신 모델 URL (1m, 2m, 3m 클래스)
-        const URL = "https://teachablemachine.withgoogle.com/models/rQCNoxJaA/";
-        
-        let model, webcam, ctxWebcam, maxPredictions;
-        let isPlaying = false;
-        let score = 0;
+        const TM_MODEL_URL = "https://teachablemachine.withgoogle.com/models/dpHP_RGGy/";
+        let model, webcam, maxPredictions;
+        let modelType = 'pose'; // 'pose' 또는 'image'
+        let isWebcamRunning = false;
+        let holdTime = 0;
+        const REQUIRED_HOLD_TIME = 45; // 약 1.5초 유지
+        let prepCooldown = 0; 
+        const PREP_TIME_FRAMES = 60; // 2초 유예 시간
 
-        // --- 수학 문제 데이터 (정답이 1m, 2m, 3m 인 경우만) ---
-        const mathProblems = [
-            { dist: '1', angle: '45', ans: '1m', desc: '거리 1m, 올려다본 각도 45°' },
-            { dist: '√3', angle: '30', ans: '1m', desc: '거리 √3m, 올려다본 각도 30°' },
-            { dist: '2', angle: '45', ans: '2m', desc: '거리 2m, 올려다본 각도 45°' },
-            { dist: '2√3', angle: '30', ans: '2m', desc: '거리 2√3m, 올려다본 각도 30°' },
-            { dist: '3', angle: '45', ans: '3m', desc: '거리 3m, 올려다본 각도 45°' },
-            { dist: '√3', angle: '60', ans: '3m', desc: '거리 √3m, 올려다본 각도 60°' }
-        ];
-
-        let currentProblem = null;
-        let poseHoldTimer = 0;
-        const HOLD_DURATION = 30; // 약 1초 유지 필요 (프레임 단위)
-        
-        // --- Game Canvas 설정 ---
-        const gameCanvas = document.getElementById('game-canvas');
-        const ctxGame = gameCanvas.getContext('2d');
-        
-        // 반응형 확대를 위해 그리기 기준이 되는 가상(Virtual) 해상도 고정값 사용
-        const W = 800;
-        const H = 500;
-
-        // 캔버스 내 좌표 설정
-        const FLOOR_Y = H - 50;
-        const PLAYER_X = 100;
-        const HOOP_X = W - 150;
-        
-        // 정답별 골대 높이 (Y좌표) 맵핑 (1m: 300, 2m: 200, 3m: 100)
-        const hoopYMap = {
-            '1m': FLOOR_Y - 150,
-            '2m': FLOOR_Y - 250,
-            '3m': FLOOR_Y - 350
-        };
-
-        // 공 상태 객체
-        let ball = {
-            x: PLAYER_X, y: FLOOR_Y - 50,
-            isShooting: false,
-            progress: 0,
-            targetHoop: null
-        };
-
-        // 게임 초기화 및 모델 로드
-        async function initGame() {
-            if (isPlaying) return;
-            
+        async function initWebcam() {
             const startBtn = document.getElementById('start-btn');
-            const loadingMsg = document.getElementById('loading-msg');
-            
-            startBtn.classList.add('hidden');
-            loadingMsg.classList.remove('hidden');
+            startBtn.innerText = "로딩 중...";
+            startBtn.disabled = true;
+
+            const modelURL = TM_MODEL_URL + "model.json";
+            const metadataURL = TM_MODEL_URL + "metadata.json";
 
             try {
-                const modelURL = URL + "model.json";
-                const metadataURL = URL + "metadata.json";
+                // Pose 모델 우선 시도, 실패 시 Image 모델 자동 전환
+                try {
+                    modelType = 'pose';
+                    model = await tmPose.load(modelURL, metadataURL);
+                    maxPredictions = model.getTotalClasses();
+                } catch (poseErr) {
+                    console.warn("Pose 모델 로드 실패, Image 모델로 재시도합니다:", poseErr);
+                    modelType = 'image';
+                    model = await tmImage.load(modelURL, metadataURL);
+                    maxPredictions = model.getTotalClasses();
+                }
 
-                // 모델 로드
-                model = await tmPose.load(modelURL, metadataURL);
-                maxPredictions = model.getTotalClasses();
-
-                // 웹캠 설정
-                const size = 250;
                 const flip = true; 
-                webcam = new tmPose.Webcam(size, size, flip);
-                await webcam.setup(); 
+                if (modelType === 'pose') {
+                    webcam = new tmPose.Webcam(300, 300, flip);
+                } else {
+                    webcam = new tmImage.Webcam(300, 300, flip);
+                }
+                
+                await webcam.setup();
                 await webcam.play();
                 
-                // 루프 시작
-                window.requestAnimationFrame(gameLoop);
+                const webcamContainer = document.getElementById('webcam-container');
+                webcamContainer.innerHTML = '';
+                webcamContainer.appendChild(webcam.canvas);
 
-                // 웹캠 캔버스 UI에 추가
-                document.getElementById('webcam-placeholder').style.display = 'none';
-                const wcContainer = document.getElementById("webcam-container");
-                wcContainer.appendChild(webcam.canvas);
-
-                // 클래스 레이블 UI 생성
-                const labelContainer = document.getElementById("label-container");
-                labelContainer.innerHTML = ''; // 초기화
-                for (let i = 0; i < maxPredictions; i++) {
-                    const div = document.createElement("div");
-                    div.className = "flex justify-between items-center text-sm px-2 py-1 bg-white border border-gray-200 rounded";
-                    const spanName = document.createElement("span");
-                    spanName.className = "font-semibold text-gray-700";
-                    const spanProb = document.createElement("span");
-                    spanProb.className = "text-teal-600 font-bold";
-                    
-                    div.appendChild(spanName);
-                    div.appendChild(spanProb);
-                    labelContainer.appendChild(div);
-                }
-
-                isPlaying = true;
-                loadingMsg.classList.add('hidden');
-                
-                // 첫 문제 출제
-                setNextProblem();
-
-            } catch (error) {
-                console.error("에러 발생:", error);
-                alert("모델을 불러오거나 카메라를 켜는 데 실패했습니다. 카메라 권한을 확인해주세요.");
-                startBtn.classList.remove('hidden');
-                loadingMsg.classList.add('hidden');
+                isWebcamRunning = true;
+                window.requestAnimationFrame(webcamLoop);
+            } catch (err) {
+                console.error("웹캠/모델 로드 실패:", err);
+                startBtn.innerText = "▶️ 다시 시도";
+                startBtn.disabled = false;
+                document.getElementById('recognition-status').innerText = "모델 연결 실패. 네트워크 상태나 티처블 머신 URL을 확인해 주세요.";
             }
         }
 
-        async function gameLoop() {
-            webcam.update(); // 웹캠 프레임 업데이트
-            await predictPose(); // 포즈 예측 및 판정
-            drawGameScene(); // 캔버스 그리기
-            window.requestAnimationFrame(gameLoop);
+        async function webcamLoop() {
+            if (isWebcamRunning) {
+                webcam.update();
+                await predict();
+                window.requestAnimationFrame(webcamLoop);
+            }
         }
 
-        async function predictPose() {
-            if (!model || ball.isShooting) return;
+        async function predict() {
+            if (!model || !webcam) return;
 
-            const { pose, posenetOutput } = await model.estimatePose(webcam.canvas);
-            const prediction = await model.predict(posenetOutput);
-
-            let highestProb = 0;
-            let bestClass = "";
-
-            const labelContainer = document.getElementById("label-container");
+            let prediction;
+            try {
+                if (modelType === 'pose') {
+                    const { pose, posenetOutput } = await model.estimatePose(webcam.canvas);
+                    prediction = await model.predict(posenetOutput);
+                } else {
+                    prediction = await model.predict(webcam.canvas);
+                }
+            } catch (err) {
+                console.error("예측 과정 오류:", err);
+                return;
+            }
+            
+            let maxProb = 0;
+            let bestIndex = 0;
 
             for (let i = 0; i < maxPredictions; i++) {
-                const className = prediction[i].className;
-                const probability = prediction[i].probability;
+                const classProb = prediction[i].probability.toFixed(2);
+                const barEl = document.getElementById(`bar-${i}`);
+                const probEl = document.getElementById(`prob-${i}`);
                 
-                // UI 업데이트
-                if(labelContainer.childNodes[i]) {
-                    labelContainer.childNodes[i].childNodes[0].innerText = className;
-                    labelContainer.childNodes[i].childNodes[1].innerText = (probability * 100).toFixed(0) + "%";
-                    
-                    // 정답에 해당하는 막대는 하이라이트
-                    if (currentProblem && className === currentProblem.ans && probability > 0.8) {
-                         labelContainer.childNodes[i].classList.add("bg-teal-100", "border-teal-400");
-                    } else {
-                         labelContainer.childNodes[i].classList.remove("bg-teal-100", "border-teal-400");
-                    }
-                }
+                if (barEl) barEl.style.width = Math.round(classProb * 100) + "%";
+                if (probEl) probEl.innerText = classProb;
 
-                if (probability > highestProb) {
-                    highestProb = probability;
-                    bestClass = className;
+                if (prediction[i].probability > maxProb) {
+                    maxProb = prediction[i].probability;
+                    bestIndex = i;
                 }
             }
 
-            // 정답 판정 (확률이 80% 이상일 때)
-            if (currentProblem && highestProb > 0.8 && bestClass === currentProblem.ans) {
-                poseHoldTimer++;
-                // 자세를 일정 시간(HOLD_DURATION) 유지하면 슛!
-                if (poseHoldTimer > HOLD_DURATION) {
-                    shootBall(bestClass);
-                    poseHoldTimer = 0;
+            const statusEl = document.getElementById('recognition-status');
+            const gaugeContainer = document.getElementById('hold-gauge-container');
+            const gaugeBar = document.getElementById('hold-gauge-bar');
+
+            if (gameState === 'waiting') {
+                if (prepCooldown > 0) {
+                    prepCooldown--;
+                    const secondsLeft = Math.ceil(prepCooldown / 30);
+                    statusEl.innerText = `⏳ 준비 중... (${secondsLeft}초 후 자세 인식 시작)`;
+                    statusEl.className = "w-full font-bold text-center text-xs md:text-sm p-2 rounded bg-amber-100 text-amber-800 border border-amber-200";
+                    if (gaugeContainer) gaugeContainer.classList.add('hidden');
+                    holdTime = 0;
+                    return;
+                }
+
+                if (maxProb > 0.85) {
+                    const optIndex = bestIndex;
+                    const optValue = currentProblem ? currentProblem.options[optIndex] : "";
+                    
+                    holdTime++;
+                    const progressPercent = Math.min(100, Math.round((holdTime / REQUIRED_HOLD_TIME) * 100));
+
+                    statusEl.innerText = `현재 인식: [ ${optIndex + 1}번 보기 (${optValue}m) ] (${progressPercent}%)`;
+                    statusEl.className = "w-full font-bold text-center text-xs md:text-sm p-2 rounded transition-colors bg-teal-100 text-teal-800 border border-teal-300";
+
+                    if (gaugeContainer) {
+                        gaugeContainer.classList.remove('hidden');
+                        gaugeBar.style.width = `${progressPercent}%`;
+                    }
+
+                    if (holdTime >= REQUIRED_HOLD_TIME) {
+                        triggerShoot(optIndex);
+                        holdTime = 0;
+                        if (gaugeContainer) gaugeContainer.classList.add('hidden');
+                        statusEl.innerText = "🏀 슛 발사!";
+                        statusEl.className = "w-full font-bold text-center text-xs md:text-sm p-2 rounded bg-teal-600 text-white";
+                    }
+                } else {
+                    holdTime = 0;
+                    if (gaugeContainer) gaugeContainer.classList.add('hidden');
+                    statusEl.innerText = "보기(①, ②, ③)에 맞는 자세를 취해주세요.";
+                    statusEl.className = "w-full text-gray-500 font-bold text-center text-xs md:text-sm p-2 rounded bg-gray-50 transition-colors";
                 }
             } else {
-                poseHoldTimer = 0; // 자세가 흐트러지면 타이머 초기화
+                holdTime = 0;
+                if (gaugeContainer) gaugeContainer.classList.add('hidden');
             }
         }
 
-        function setNextProblem() {
-            // 랜덤으로 문제 선택
-            const randIdx = Math.floor(Math.random() * mathProblems.length);
-            currentProblem = mathProblems[randIdx];
-            document.getElementById('problem-display').innerText = currentProblem.desc;
-            
-            // 공 위치 초기화
-            ball.x = PLAYER_X;
-            ball.y = FLOOR_Y - 50;
-            ball.isShooting = false;
-            ball.progress = 0;
-            poseHoldTimer = 0;
-        }
+        // 다양한 문제 후보 정의 (골대까지의 거리, 각도, 정답값, 오답값)
+        const rawProblemPool = [
+            // 30도 문제 (tan 30° = √3 / 3)
+            { base: 3, angle: 30, correctValue: '√3', distractors: [3, 4] },
+            { base: 6, angle: 30, correctValue: '2√3', distractors: [2, 5] },
+            { base: 9, angle: 30, correctValue: '3√3', distractors: [3, 4] },
+            { base: 12, angle: 30, correctValue: '4√3', distractors: [5, 8] },
 
-        function shootBall(answeredClass) {
-            if (ball.isShooting) return;
-            ball.isShooting = true;
-            ball.targetHoop = answeredClass;
-            ball.progress = 0;
-            
-            // 피드백 UI 표시
-            const overlay = document.getElementById('feedback-overlay');
-            const text = document.getElementById('feedback-text');
-            overlay.classList.remove('opacity-0');
-            text.classList.remove('scale-50');
-            text.classList.add('scale-100');
+            // 45도 문제 (tan 45° = 1)
+            { base: 3, angle: 45, correctValue: 3, distractors: [2, 4] },
+            { base: 4, angle: 45, correctValue: 4, distractors: [5, 6] },
+            { base: 5, angle: 45, correctValue: 5, distractors: [3, 4] },
+            { base: 6, angle: 45, correctValue: 6, distractors: [4, 5] },
 
-            // 점수 증가
-            score += 10;
-            document.getElementById('score-display').innerText = score;
+            // 60도 문제 (tan 60° = √3)
+            { base: 2, angle: 60, correctValue: '2√3', distractors: [4, 5] },
+            { base: 3, angle: 60, correctValue: '3√3', distractors: [4, 6] },
+            { base: 4, angle: 60, correctValue: '4√3', distractors: [5, 6] },
+            { base: 5, angle: 60, correctValue: '5√3', distractors: [6, 7] }
+        ];
 
-            // 슈팅 애니메이션 진행
-            const shootAnimation = setInterval(() => {
-                ball.progress += 0.02; // 이동 속도
-                
-                // 이차 베지어 곡선 (포물선 궤적)
-                const startX = PLAYER_X;
-                const startY = FLOOR_Y - 50;
-                const endX = HOOP_X;
-                const endY = hoopYMap[ball.targetHoop];
-                
-                // X는 선형 이동
-                ball.x = startX + (endX - startX) * ball.progress;
-                
-                // Y는 포물선 곡선 (중간에 위로 솟구침)
-                const arcHeight = 150;
-                ball.y = startY + (endY - startY) * ball.progress - Math.sin(ball.progress * Math.PI) * arcHeight;
-
-                if (ball.progress >= 1) {
-                    clearInterval(shootAnimation);
-                    
-                    // 피드백 UI 숨기기
-                    setTimeout(() => {
-                        overlay.classList.add('opacity-0');
-                        text.classList.remove('scale-100');
-                        text.classList.add('scale-50');
-                        // 다음 문제 출제
-                        setNextProblem();
-                    }, 1000);
+        function parseOptionValue(opt) {
+            if (typeof opt === 'number') return opt;
+            if (typeof opt === 'string') {
+                if (opt === '√3') return Math.sqrt(3);
+                if (opt.includes('√3')) {
+                    const mult = opt.replace('√3', '');
+                    return parseInt(mult) * Math.sqrt(3);
                 }
-            }, 1000 / 60); // 60fps
-        }
-
-        function drawGameScene() {
-            // 배경 지우기
-            ctxGame.clearRect(0, 0, W, H);
-
-            // 1. 바닥(코트) 그리기
-            ctxGame.fillStyle = '#fef3c7'; // 코트 색상
-            ctxGame.fillRect(0, FLOOR_Y, W, H - FLOOR_Y);
-            ctxGame.beginPath();
-            ctxGame.moveTo(0, FLOOR_Y);
-            ctxGame.lineTo(W, FLOOR_Y);
-            ctxGame.strokeStyle = '#d97706';
-            ctxGame.lineWidth = 4;
-            ctxGame.stroke();
-
-            // 2. 골대 기둥 및 림(Rim) 그리기 (1m, 2m, 3m)
-            const hoopLevels = ['1m', '2m', '3m'];
-            
-            // 메인 기둥
-            ctxGame.fillStyle = '#64748b';
-            ctxGame.fillRect(HOOP_X + 20, hoopYMap['3m'], 15, FLOOR_Y - hoopYMap['3m']);
-            
-            hoopLevels.forEach(level => {
-                const y = hoopYMap[level];
-                
-                // 백보드
-                ctxGame.fillStyle = '#ffffff';
-                ctxGame.fillRect(HOOP_X + 15, y - 40, 10, 60);
-                ctxGame.strokeStyle = '#ef4444'; // 빨간 테두리
-                ctxGame.lineWidth = 2;
-                ctxGame.strokeRect(HOOP_X + 15, y - 40, 10, 60);
-                
-                // 림 (골대 링)
-                ctxGame.fillStyle = '#ef4444';
-                ctxGame.fillRect(HOOP_X - 25, y, 40, 6);
-                
-                // 네트 (그물)
-                ctxGame.beginPath();
-                ctxGame.moveTo(HOOP_X - 20, y + 6);
-                ctxGame.lineTo(HOOP_X - 10, y + 30);
-                ctxGame.lineTo(HOOP_X + 10, y + 30);
-                ctxGame.lineTo(HOOP_X + 20, y + 6);
-                ctxGame.strokeStyle = '#e2e8f0';
-                ctxGame.lineWidth = 2;
-                ctxGame.stroke();
-
-                // 높이 텍스트 라벨
-                ctxGame.fillStyle = '#334155';
-                ctxGame.font = 'bold 16px Inter';
-                ctxGame.fillText(level, HOOP_X + 35, y + 5);
-            });
-
-            // 3. 수학 문제 시각화 (직각삼각형 점선)
-            if (currentProblem && !ball.isShooting) {
-                const targetY = hoopYMap[currentProblem.ans];
-                
-                ctxGame.beginPath();
-                // 빗변
-                ctxGame.moveTo(PLAYER_X, FLOOR_Y);
-                ctxGame.lineTo(HOOP_X, targetY);
-                // 높이
-                ctxGame.lineTo(HOOP_X, FLOOR_Y);
-                // 밑변
-                ctxGame.lineTo(PLAYER_X, FLOOR_Y);
-                
-                ctxGame.strokeStyle = 'rgba(20, 184, 166, 0.6)'; // 틸(Teal) 색상 점선
-                ctxGame.lineWidth = 3;
-                ctxGame.setLineDash([10, 10]);
-                ctxGame.stroke();
-                ctxGame.setLineDash([]); // 점선 초기화
-
-                // 각도 호(Arc) 그리기
-                ctxGame.beginPath();
-                ctxGame.arc(PLAYER_X, FLOOR_Y, 40, 0, -Math.atan2(FLOOR_Y - targetY, HOOP_X - PLAYER_X), true);
-                ctxGame.strokeStyle = '#ef4444';
-                ctxGame.lineWidth = 2;
-                ctxGame.stroke();
-
-                // 텍스트 (거리 및 각도)
-                ctxGame.fillStyle = '#0f766e';
-                ctxGame.font = 'bold 18px Inter';
-                // 밑변(거리) 텍스트
-                ctxGame.fillText(`거리: ${currentProblem.dist}m`, (PLAYER_X + HOOP_X) / 2 - 30, FLOOR_Y + 25);
-                // 각도 텍스트
-                ctxGame.fillText(`${currentProblem.angle}°`, PLAYER_X + 50, FLOOR_Y - 10);
-                
-                // '?' 높이 텍스트
-                ctxGame.fillStyle = '#be123c';
-                ctxGame.fillText(`h = ?`, HOOP_X - 45, (FLOOR_Y + targetY) / 2);
             }
-
-            // 4. 농구공 그리기
-            ctxGame.beginPath();
-            ctxGame.arc(ball.x, ball.y, 15, 0, Math.PI * 2);
-            ctxGame.fillStyle = '#f97316'; // 주황색
-            ctxGame.fill();
-            ctxGame.strokeStyle = '#c2410c';
-            ctxGame.lineWidth = 2;
-            ctxGame.stroke();
-            
-            // 공 무늬 그리기
-            ctxGame.beginPath();
-            ctxGame.arc(ball.x, ball.y, 15, Math.PI/4, Math.PI*1.25);
-            ctxGame.stroke();
-            ctxGame.beginPath();
-            ctxGame.arc(ball.x, ball.y, 15, -Math.PI/4, -Math.PI*1.25, true);
-            ctxGame.stroke();
-            
-            // 플레이어 대기 위치 아이콘(단순화된 사람 모양)
-            if (!ball.isShooting) {
-                ctxGame.fillStyle = '#475569';
-                // 몸통
-                ctxGame.fillRect(PLAYER_X - 10, FLOOR_Y - 40, 20, 40);
-                // 머리
-                ctxGame.beginPath();
-                ctxGame.arc(PLAYER_X, FLOOR_Y - 50, 12, 0, Math.PI * 2);
-                ctxGame.fill();
-            }
+            return parseFloat(opt);
         }
 
-        // --- 반응형 캔버스 리사이즈 처리 ---
-        function handleResize() {
-            const rect = gameCanvas.getBoundingClientRect();
-            // 디스플레이 픽셀 비율(Retina 등 고해상도 모니터 대응)
-            const dpr = window.devicePixelRatio || 1;
-            
-            // 캔버스의 실제 물리적 크기 설정
-            gameCanvas.width = rect.width * dpr;
-            gameCanvas.height = (rect.width * (5/8)) * dpr; // 8:5 비율 유지
-            
-            // 800x500 가상 좌표계를 실제 물리적 크기에 맞게 스케일링
-            ctxGame.setTransform(
-                (rect.width * dpr) / W, 0, 
-                0, ((rect.width * (5/8)) * dpr) / H, 
-                0, 0
-            );
-            
-            // 화면 크기가 변했을 때 즉시 다시 그리기
-            drawGameScene();
-        }
+        let currentProblem = null;
+        let score = 0;
+        let gameState = 'waiting'; // 'waiting', 'shooting', 'result'
+        let selectedOptionIndex = -1;
+        let lastCorrectIndex = -1; // 이전 문제의 정답 인덱스 기록
 
-        // 윈도우 크기 변경 시 이벤트 리스너 등록
-        window.addEventListener('resize', handleResize);
+        const canvas = document.getElementById('gameCanvas');
+        const ctx = canvas.getContext('2d');
         
-        // 브라우저 초기 로드 시 캔버스 크기 맞춤
-        window.addEventListener('load', handleResize);
+        const width = 800;
+        const height = 600;
+        canvas.width = width;
+        canvas.height = height;
 
+        let PIXELS_PER_METER = 50; 
+        const FLOOR_Y = height - 60; // 540
+        const EYE_LEVEL_Y = FLOOR_Y - 130; // 410 (캐릭터 눈높이 고정 위치)
+        const CHARACTER_X = 170; 
+        let GOAL_X;
+
+        // ★ 문제의 높이와 거리에 따라 피사체가 짤리지 않도록 스케일 동적 자동 조절 ★
+        function updateScaleAndGoal() {
+            if (!currentProblem) return;
+
+            const maxOptionMeters = Math.max(...currentProblem.options.map(parseOptionValue));
+            
+            // 캔버스 상단 여유공간(80px)을 남기도록 y축 스케일 계산
+            const maxVerticalPx = 270;
+            const scaleY = maxVerticalPx / maxOptionMeters;
+            
+            // 캔버스 우측 여유공간(80px)을 남기도록 x축 스케일 계산
+            const maxHorizontalPx = 500;
+            const scaleX = maxHorizontalPx / currentProblem.base;
+            
+            // 가장 적절한 축적 비율 선택 (32 ~ 65 사이)
+            PIXELS_PER_METER = Math.min(scaleX, scaleY, 65);
+            PIXELS_PER_METER = Math.max(PIXELS_PER_METER, 32);
+
+            GOAL_X = CHARACTER_X + (currentProblem.base * PIXELS_PER_METER);
+            if (GOAL_X > width - 90) GOAL_X = width - 90;
+        }
+
+        function nextProblem() {
+            const popup = document.getElementById('result-popup');
+            if (popup) popup.classList.add('hidden');
+
+            let candidateProblem = null;
+            let sortedOptions = [];
+            let correctIdx = -1;
+
+            // 연속으로 같은 번호가 정답으로 나오지 않도록 문제 생성 반복
+            let attempts = 0;
+            while (attempts < 50) {
+                attempts++;
+                const randomIndex = Math.floor(Math.random() * rawProblemPool.length);
+                const rawProb = rawProblemPool[randomIndex];
+
+                const allOptions = [rawProb.correctValue, ...rawProb.distractors];
+                allOptions.sort((a, b) => parseOptionValue(a) - parseOptionValue(b));
+
+                correctIdx = allOptions.indexOf(rawProb.correctValue);
+
+                // 이전 문제의 정답 인덱스와 다르면 채택
+                if (correctIdx !== lastCorrectIndex || attempts >= 45) {
+                    candidateProblem = rawProb;
+                    sortedOptions = allOptions;
+                    break;
+                }
+            }
+
+            lastCorrectIndex = correctIdx;
+
+            currentProblem = {
+                base: candidateProblem.base,
+                angle: candidateProblem.angle,
+                options: sortedOptions,
+                correctIndex: correctIdx
+            };
+            
+            updateScaleAndGoal();
+
+            document.getElementById('prob-base').innerText = currentProblem.base;
+            document.getElementById('prob-angle').innerText = currentProblem.angle;
+
+            const opts = currentProblem.options;
+            document.getElementById('opt-0').innerText = `① ${opts[0]}m`;
+            document.getElementById('opt-1').innerText = `② ${opts[1]}m`;
+            document.getElementById('opt-2').innerText = `③ ${opts[2]}m`;
+
+            document.getElementById('manual-btn-0').innerText = `① ${opts[0]}m`;
+            document.getElementById('manual-btn-1').innerText = `② ${opts[1]}m`;
+            document.getElementById('manual-btn-2').innerText = `③ ${opts[2]}m`;
+
+            resetBall();
+            gameState = 'waiting';
+            prepCooldown = PREP_TIME_FRAMES;
+            holdTime = 0;
+
+            const gaugeContainer = document.getElementById('hold-gauge-container');
+            if (gaugeContainer) gaugeContainer.classList.add('hidden');
+        }
+
+        // 틀렸을 때 동일한 문제로 다시 도전하기
+        function retryProblem() {
+            const popup = document.getElementById('result-popup');
+            if (popup) popup.classList.add('hidden');
+
+            resetBall();
+            gameState = 'waiting';
+            prepCooldown = PREP_TIME_FRAMES;
+            holdTime = 0;
+
+            const gaugeContainer = document.getElementById('hold-gauge-container');
+            if (gaugeContainer) gaugeContainer.classList.add('hidden');
+        }
+
+        // 농구공 반지름 크기 설정 (24px)
+        const ball = { x: 0, y: 0, radius: 24, startX: 0, startY: 0, targetX: 0, targetY: 0, controlX: 0, controlY: 0, frame: 0, duration: 120 };
+
+        function resetBall() {
+            ball.x = CHARACTER_X + 25;
+            ball.y = EYE_LEVEL_Y - 25;
+        }
+
+        function triggerShoot(optIndex) {
+            if (gameState !== 'waiting') return;
+            gameState = 'shooting';
+            selectedOptionIndex = optIndex;
+
+            const targetMeters = parseOptionValue(currentProblem.options[optIndex]);
+            const targetX = GOAL_X - 30; // 백보드 및 림 중앙
+            const targetY = EYE_LEVEL_Y - (targetMeters * PIXELS_PER_METER);
+
+            ball.startX = ball.x;
+            ball.startY = ball.y;
+            ball.targetX = targetX;
+            ball.targetY = targetY;
+            
+            ball.duration = 120;
+            ball.frame = 0;
+            
+            // 공의 정점이 캔버스 상단 영역(y = 30) 위로 넘어가서 잘리지 않도록 안전 상한선 설정
+            const desiredApexY = Math.min(ball.startY, ball.targetY) - 90;
+            const safeApexY = Math.max(30, desiredApexY);
+            
+            ball.controlX = (ball.startX + ball.targetX) / 2;
+            ball.controlY = safeApexY;
+        }
+
+        function updateBall() {
+            if (gameState !== 'shooting') return;
+
+            ball.frame++;
+            const t = ball.frame / ball.duration;
+
+            if (t >= 1) {
+                gameState = 'result';
+                ball.x = ball.targetX;
+                ball.y = ball.targetY;
+                checkResult();
+            } else {
+                ball.x = (1 - t) * (1 - t) * ball.startX + 2 * (1 - t) * t * ball.controlX + t * t * ball.targetX;
+                ball.y = (1 - t) * (1 - t) * ball.startY + 2 * (1 - t) * t * ball.controlY + t * t * ball.targetY;
+            }
+        }
+
+        function checkResult() {
+            const isCorrect = (selectedOptionIndex === currentProblem.correctIndex);
+            const popup = document.getElementById('result-popup');
+            const resultText = document.getElementById('result-text');
+            const retryBtn = document.getElementById('retry-btn');
+            
+            if (isCorrect) {
+                score += 10;
+                document.getElementById('score').innerText = score;
+                resultText.innerText = "정답! 🏀";
+                popup.className = "absolute top-1/2 left-1/2 pop-up bg-green-500 text-white px-6 py-4 md:px-8 md:py-6 rounded-2xl font-bold text-center shadow-2xl z-20 flex flex-col items-center gap-3 min-w-[240px]";
+                retryBtn.classList.add('hidden');
+            } else {
+                resultText.innerText = "오답! ❌";
+                popup.className = "absolute top-1/2 left-1/2 pop-up bg-red-500 text-white px-6 py-4 md:px-8 md:py-6 rounded-2xl font-bold text-center shadow-2xl z-20 flex flex-col items-center gap-3 min-w-[240px]";
+                retryBtn.classList.remove('hidden');
+            }
+            
+            popup.classList.remove('hidden');
+        }
+
+        function drawFractionText(text, x, y, color = "black", size = 26) {
+            ctx.fillStyle = color;
+            ctx.font = `bold ${size}px 'Inter', sans-serif`;
+            ctx.textAlign = "center";
+            ctx.textBaseline = "middle";
+
+            if (typeof text === 'string' && text.includes('/')) {
+                const parts = text.split('/');
+                ctx.fillText(parts[0], x, y - Math.floor(size*0.6));
+                ctx.fillRect(x - size, y, size*2, 2.5); 
+                ctx.fillText(parts[1], x, y + Math.floor(size*0.6));
+            } else {
+                ctx.fillText(text, x, y);
+            }
+        }
+
+        // ★ 캐릭터 렌더링 ★
+        function drawCharacter() {
+            const cx = CHARACTER_X;
+            const cy = FLOOR_Y;
+            const skinColor = "#ffedd5";
+
+            // 1. 살색 다리 (길이 60px)
+            ctx.fillStyle = skinColor; 
+            ctx.fillRect(cx - 18, cy - 60, 14, 60);
+            ctx.fillRect(cx + 4, cy - 60, 14, 60);
+
+            // 2. 파란 반바지
+            ctx.fillStyle = "#2563eb";
+            ctx.fillRect(cx - 22, cy - 60, 20, 26);
+            ctx.fillRect(cx + 2, cy - 60, 20, 26);
+            
+            // 3. 파란 신발
+            ctx.fillStyle = "#1d4ed8";
+            ctx.beginPath();
+            ctx.arc(cx - 11, cy, 11, 0, Math.PI, true);
+            ctx.arc(cx + 11, cy, 11, 0, Math.PI, true);
+            ctx.fill();
+
+            // 4. 하얀색 나시티 상체 (높이 70px)
+            ctx.fillStyle = "#ffffff";
+            ctx.fillRect(cx - 26, cy - 130, 52, 70);
+            ctx.strokeStyle = "#cbd5e1";
+            ctx.lineWidth = 2;
+            ctx.strokeRect(cx - 26, cy - 130, 52, 70);
+
+            // 5. 가슴 텍스트 ('하안' - 턱에 가려지지 않도록 한 줄로 위치 조절)
+            ctx.fillStyle = "black";
+            ctx.font = "bold 17px 'Inter', sans-serif";
+            ctx.textAlign = "center";
+            ctx.textBaseline = "middle";
+            ctx.fillText("하안", cx, cy - 82);
+
+            // 6. 민소매(나시티) 스타일 살색 팔
+            ctx.strokeStyle = skinColor;
+            ctx.lineWidth = 14;
+            ctx.lineCap = "round";
+            ctx.beginPath();
+            ctx.moveTo(cx - 26, cy - 118);
+            ctx.lineTo(cx - 48, cy - 165);
+            ctx.moveTo(cx + 26, cy - 118);
+            ctx.lineTo(cx + 48, cy - 165);
+            ctx.stroke();
+
+            // 나시티 어깨 스트랩
+            ctx.strokeStyle = "#cbd5e1";
+            ctx.lineWidth = 2;
+            ctx.beginPath();
+            ctx.moveTo(cx - 26, cy - 130);
+            ctx.lineTo(cx - 14, cy - 130);
+            ctx.moveTo(cx + 14, cy - 130);
+            ctx.lineTo(cx + 26, cy - 130);
+            ctx.stroke();
+
+            // 7. 살색 얼굴 원 (중심 y값 = EYE_LEVEL_Y)
+            const faceY = EYE_LEVEL_Y;
+            const faceRadius = 32;
+            ctx.fillStyle = skinColor; 
+            ctx.beginPath();
+            ctx.arc(cx, faceY, faceRadius, 0, Math.PI * 2); 
+            ctx.fill();
+
+            // 8. 머리카락 (정수리 상단 부위)
+            ctx.fillStyle = "#0f172a";
+            ctx.beginPath();
+            ctx.arc(cx, faceY, faceRadius, Math.PI * 1.22, Math.PI * 1.78, false); 
+            ctx.fill();
+
+            // 앞머리 볼륨
+            ctx.beginPath();
+            ctx.arc(cx, faceY - 14, 20, Math.PI * 1.1, Math.PI * 1.9, false);
+            ctx.fill();
+
+            // 9. 큰 눈과 이목구비 (눈 위치 faceY - 2 가 EYE_LEVEL_Y 기준선과 정밀 일치)
+            ctx.fillStyle = "#0f172a";
+            ctx.beginPath();
+            ctx.arc(cx - 12, faceY - 2, 6, 0, Math.PI * 2); // 왼쪽 눈
+            ctx.arc(cx + 12, faceY - 2, 6, 0, Math.PI * 2); // 오른쪽 눈
+            ctx.fill();
+
+            // 눈동자 하이라이트
+            ctx.fillStyle = "#ffffff";
+            ctx.beginPath();
+            ctx.arc(cx - 14, faceY - 4, 2.5, 0, Math.PI * 2);
+            ctx.arc(cx + 10, faceY - 4, 2.5, 0, Math.PI * 2);
+            ctx.fill();
+            
+            // 웃는 입
+            ctx.strokeStyle = "#0f172a";
+            ctx.lineWidth = 3.5;
+            ctx.beginPath();
+            ctx.arc(cx, faceY + 12, 10, 0, Math.PI, false);
+            ctx.stroke();
+        }
+
+        function drawMathUI() {
+            if (!currentProblem) return;
+
+            // 바닥선
+            ctx.strokeStyle = "#cbd5e1";
+            ctx.lineWidth = 5;
+            ctx.beginPath();
+            ctx.moveTo(0, FLOOR_Y);
+            ctx.lineTo(width, FLOOR_Y);
+            ctx.stroke();
+
+            // 선수의 눈높이 수평 기준선 (밑변)
+            ctx.strokeStyle = "#94a3b8";
+            ctx.lineWidth = 3;
+            ctx.setLineDash([8, 6]);
+            ctx.beginPath();
+            ctx.moveTo(CHARACTER_X, EYE_LEVEL_Y);
+            ctx.lineTo(GOAL_X, EYE_LEVEL_Y);
+            ctx.stroke();
+            ctx.setLineDash([]);
+
+            // 골대로부터의 거리 표시 (밑변 거리)
+            const midX = (CHARACTER_X + GOAL_X) / 2;
+            drawFractionText(currentProblem.base + "m", midX, EYE_LEVEL_Y + 28, "#0d9488", 28);
+
+            // 정답 골대 높이 y값
+            const correctTargetMeters = parseOptionValue(currentProblem.options[currentProblem.correctIndex]);
+            const correctTargetY = EYE_LEVEL_Y - (correctTargetMeters * PIXELS_PER_METER);
+
+            // 시선선 (눈 -> 골대 림 사선)
+            ctx.strokeStyle = "#f87171";
+            ctx.lineWidth = 2.5;
+            ctx.setLineDash([6, 5]);
+            ctx.beginPath();
+            ctx.moveTo(CHARACTER_X, EYE_LEVEL_Y);
+            ctx.lineTo(GOAL_X - 30, correctTargetY);
+            ctx.stroke();
+            ctx.setLineDash([]);
+
+            // 올려다보는 각도 표시 (Arc)
+            const radius = 75;
+            const startAngle = 0;
+            const endAngle = -currentProblem.angle * (Math.PI / 180);
+
+            ctx.strokeStyle = "#ef4444";
+            ctx.lineWidth = 3.5;
+            ctx.beginPath();
+            ctx.arc(CHARACTER_X, EYE_LEVEL_Y, radius, startAngle, endAngle, true);
+            ctx.stroke();
+
+            // 각도 텍스트
+            const textX = CHARACTER_X + Math.cos(endAngle / 2) * (radius + 28);
+            const textY = EYE_LEVEL_Y + Math.sin(endAngle / 2) * (radius + 28);
+            drawFractionText(currentProblem.angle + "°", textX, textY, "#ef4444", 26);
+
+            // -------------------------------------------------------------
+            // ★ 선수의 눈의 높이와 골대 높이의 차이 'x' 수직 표시선 및 라벨 ★
+            // -------------------------------------------------------------
+            const xDimensionX = GOAL_X + 25; // 골대 오른쪽에 수직 치수선 배치
+
+            // 수직 치수선 (눈높이 ~ 골대 림 높이)
+            ctx.strokeStyle = "#ef4444";
+            ctx.lineWidth = 3;
+            ctx.setLineDash([5, 4]);
+            ctx.beginPath();
+            ctx.moveTo(xDimensionX, EYE_LEVEL_Y);
+            ctx.lineTo(xDimensionX, correctTargetY);
+            ctx.stroke();
+            ctx.setLineDash([]);
+
+            // 치수선 양 끝 마감 틱(Tick)
+            ctx.strokeStyle = "#ef4444";
+            ctx.lineWidth = 3.5;
+            ctx.beginPath();
+            ctx.moveTo(xDimensionX - 8, EYE_LEVEL_Y);
+            ctx.lineTo(xDimensionX + 8, EYE_LEVEL_Y);
+            ctx.moveTo(xDimensionX - 8, correctTargetY);
+            ctx.lineTo(xDimensionX + 8, correctTargetY);
+            ctx.stroke();
+
+            // 'x' 라벨 텍스트 표시
+            const xMidY = (EYE_LEVEL_Y + correctTargetY) / 2;
+            ctx.fillStyle = "#ef4444";
+            ctx.font = "italic bold 36px 'Inter', sans-serif";
+            ctx.textAlign = "left";
+            ctx.textBaseline = "middle";
+            ctx.fillText("x", xDimensionX + 12, xMidY);
+        }
+
+        // ★ 농구골대 구조 ★
+        function drawGoal() {
+            const correctTargetMeters = parseOptionValue(currentProblem.options[currentProblem.correctIndex]);
+            const targetY = EYE_LEVEL_Y - (correctTargetMeters * PIXELS_PER_METER);
+
+            // 1. 골대 메인 기둥
+            ctx.fillStyle = "#475569";
+            ctx.fillRect(GOAL_X - 6, targetY - 45, 12, FLOOR_Y - (targetY - 45));
+
+            // 2. 백보드
+            const boardTopY = targetY - 60;
+            const boardHeight = 110;
+            ctx.fillStyle = "white";
+            ctx.fillRect(GOAL_X - 8, boardTopY, 12, boardHeight);
+            ctx.strokeStyle = "#ea580c";
+            ctx.lineWidth = 3.5;
+            ctx.strokeRect(GOAL_X - 8, boardTopY, 12, boardHeight);
+
+            // 백보드 안쪽 사각형
+            ctx.strokeStyle = "#ea580c";
+            ctx.lineWidth = 2.5;
+            ctx.strokeRect(GOAL_X - 8, targetY - 25, 10, 35);
+
+            // 3. 농구 림
+            ctx.fillStyle = "#ea580c";
+            ctx.fillRect(GOAL_X - 52, targetY, 44, 7);
+
+            // 브라켓 연결부
+            ctx.fillStyle = "#c2410c";
+            ctx.fillRect(GOAL_X - 8, targetY - 3, 8, 12);
+
+            // 4. 그물 (Net)
+            ctx.strokeStyle = "#cbd5e1";
+            ctx.lineWidth = 2;
+            ctx.beginPath();
+            ctx.moveTo(GOAL_X - 50, targetY + 7);
+            ctx.lineTo(GOAL_X - 42, targetY + 38);
+            ctx.lineTo(GOAL_X - 18, targetY + 38);
+            ctx.lineTo(GOAL_X - 10, targetY + 7);
+            ctx.stroke();
+        }
+
+        // ★ 농구공 렌더링 ★
+        function drawBall() {
+            ctx.fillStyle = "#ea580c";
+            ctx.beginPath();
+            ctx.arc(ball.x, ball.y, ball.radius, 0, Math.PI * 2);
+            ctx.fill();
+            
+            ctx.strokeStyle = "#431407";
+            ctx.lineWidth = 2;
+            
+            ctx.beginPath();
+            ctx.moveTo(ball.x - ball.radius, ball.y);
+            ctx.lineTo(ball.x + ball.radius, ball.y);
+            ctx.stroke();
+            
+            ctx.beginPath();
+            ctx.moveTo(ball.x, ball.y - ball.radius);
+            ctx.lineTo(ball.x, ball.y + ball.radius);
+            ctx.stroke();
+
+            ctx.beginPath();
+            ctx.moveTo(ball.x - ball.radius + 4, ball.y - ball.radius * 0.65);
+            ctx.quadraticCurveTo(ball.x - ball.radius * 0.2, ball.y, ball.x - ball.radius + 4, ball.y + ball.radius * 0.65);
+            ctx.stroke();
+
+            ctx.beginPath();
+            ctx.moveTo(ball.x + ball.radius - 4, ball.y - ball.radius * 0.65);
+            ctx.quadraticCurveTo(ball.x + ball.radius * 0.2, ball.y, ball.x + ball.radius - 3, ball.y + ball.radius * 0.65);
+            ctx.stroke();
+        }
+
+        function gameLoop() {
+            ctx.clearRect(0, 0, width, height);
+
+            if (currentProblem) {
+                updateBall();
+                drawMathUI();
+                drawGoal();
+                drawCharacter();
+                drawBall();
+            }
+
+            requestAnimationFrame(gameLoop);
+        }
+
+        window.onload = function() {
+            nextProblem();
+            gameLoop();
+        };
     </script>
 </body>
 </html>
