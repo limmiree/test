@@ -163,10 +163,14 @@
         let model, webcam, maxPredictions;
         let modelType = 'pose'; // 'pose' 또는 'image'
         let isWebcamRunning = false;
-        let holdTime = 0;
-        const REQUIRED_HOLD_TIME = 45; // 약 1.5초 유지
-        let prepCooldown = 0; 
-        const PREP_TIME_FRAMES = 60; // 2초 유예 시간
+        
+        // 태블릿 반응속도 및 연산 부하 개선을 위한 시간 기반 설정
+        let holdTimeMs = 0;
+        const REQUIRED_HOLD_TIME_MS = 1200; // 1.2초 동안 자세 유지 시 슛 발사
+        let prepCooldownMs = 0; 
+        const PREP_TIME_MS = 1500; // 문제 전환 후 1.5초 준비 유예 시간
+        let lastPredictTime = 0;
+        const PREDICT_INTERVAL_MS = 100; // AI 인식 연산 주기 (100ms = 초당 10회 추론으로 태블릿 부하 대폭 감소)
 
         async function initWebcam() {
             const startBtn = document.getElementById('start-btn');
@@ -213,15 +217,22 @@
             }
         }
 
-        async function webcamLoop() {
+        async function webcamLoop(timestamp) {
             if (isWebcamRunning) {
                 webcam.update();
-                await predict();
+                
+                // 태블릿 프레임 저하 방지: 100ms마다만 AI 추론 연산 실행
+                if (!lastPredictTime || timestamp - lastPredictTime >= PREDICT_INTERVAL_MS) {
+                    const deltaMs = lastPredictTime ? (timestamp - lastPredictTime) : PREDICT_INTERVAL_MS;
+                    lastPredictTime = timestamp;
+                    await predict(deltaMs);
+                }
+                
                 window.requestAnimationFrame(webcamLoop);
             }
         }
 
-        async function predict() {
+        async function predict(deltaMs = 100) {
             if (!model || !webcam) return;
 
             let prediction;
@@ -259,22 +270,23 @@
             const gaugeBar = document.getElementById('hold-gauge-bar');
 
             if (gameState === 'waiting') {
-                if (prepCooldown > 0) {
-                    prepCooldown--;
-                    const secondsLeft = Math.ceil(prepCooldown / 30);
+                if (prepCooldownMs > 0) {
+                    prepCooldownMs -= deltaMs;
+                    const secondsLeft = Math.max(1, Math.ceil(prepCooldownMs / 1000));
                     statusEl.innerText = `⏳ 준비 중... (${secondsLeft}초 후 자세 인식 시작)`;
                     statusEl.className = "w-full font-bold text-center text-xs md:text-sm p-2 rounded bg-amber-100 text-amber-800 border border-amber-200";
                     if (gaugeContainer) gaugeContainer.classList.add('hidden');
-                    holdTime = 0;
+                    holdTimeMs = 0;
                     return;
                 }
 
-                if (maxProb > 0.85) {
+                // 인식 감도 최적화 (0.80 이상 시 차오름)
+                if (maxProb > 0.80) {
                     const optIndex = bestIndex;
                     const optValue = currentProblem ? currentProblem.options[optIndex] : "";
                     
-                    holdTime++;
-                    const progressPercent = Math.min(100, Math.round((holdTime / REQUIRED_HOLD_TIME) * 100));
+                    holdTimeMs += deltaMs;
+                    const progressPercent = Math.min(100, Math.round((holdTimeMs / REQUIRED_HOLD_TIME_MS) * 100));
 
                     statusEl.innerText = `현재 인식: [ ${optIndex + 1}번 보기 (${optValue}m) ] (${progressPercent}%)`;
                     statusEl.className = "w-full font-bold text-center text-xs md:text-sm p-2 rounded transition-colors bg-teal-100 text-teal-800 border border-teal-300";
@@ -284,21 +296,21 @@
                         gaugeBar.style.width = `${progressPercent}%`;
                     }
 
-                    if (holdTime >= REQUIRED_HOLD_TIME) {
+                    if (holdTimeMs >= REQUIRED_HOLD_TIME_MS) {
                         triggerShoot(optIndex);
-                        holdTime = 0;
+                        holdTimeMs = 0;
                         if (gaugeContainer) gaugeContainer.classList.add('hidden');
                         statusEl.innerText = "🏀 슛 발사!";
                         statusEl.className = "w-full font-bold text-center text-xs md:text-sm p-2 rounded bg-teal-600 text-white";
                     }
                 } else {
-                    holdTime = 0;
+                    holdTimeMs = 0;
                     if (gaugeContainer) gaugeContainer.classList.add('hidden');
                     statusEl.innerText = "보기(①, ②, ③)에 맞는 자세를 취해주세요.";
                     statusEl.className = "w-full text-gray-500 font-bold text-center text-xs md:text-sm p-2 rounded bg-gray-50 transition-colors";
                 }
             } else {
-                holdTime = 0;
+                holdTimeMs = 0;
                 if (gaugeContainer) gaugeContainer.classList.add('hidden');
             }
         }
@@ -431,8 +443,24 @@
 
             resetBall();
             gameState = 'waiting';
-            prepCooldown = PREP_TIME_FRAMES;
-            holdTime = 0;
+            prepCooldownMs = PREP_TIME_MS;
+            holdTimeMs = 0;
+            lastPredictTime = 0;
+
+            const gaugeContainer = document.getElementById('hold-gauge-container');
+            if (gaugeContainer) gaugeContainer.classList.add('hidden');
+        }
+
+        // 틀렸을 때 동일한 문제로 다시 도전하기
+        function retryProblem() {
+            const popup = document.getElementById('result-popup');
+            if (popup) popup.classList.add('hidden');
+
+            resetBall();
+            gameState = 'waiting';
+            prepCooldownMs = PREP_TIME_MS;
+            holdTimeMs = 0;
+            lastPredictTime = 0;
 
             const gaugeContainer = document.getElementById('hold-gauge-container');
             if (gaugeContainer) gaugeContainer.classList.add('hidden');
