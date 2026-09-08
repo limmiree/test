@@ -4,200 +4,552 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>삼각비 농구 게임</title>
+    <!-- Tailwind CSS -->
     <script src="https://cdn.tailwindcss.com"></script>
+    <!-- TensorFlow.js and Teachable Machine Libraries -->
     <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@1.3.1/dist/tf.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/@teachablemachine/pose@0.8/dist/teachablemachine-pose.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/@teachablemachine/image@0.8/dist/teachablemachine-image.min.js"></script>
     <style>
-        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;700&display=swap');
-        body { font-family: 'Inter', sans-serif; background-color: #ecfdf5; }
-        
-        /* 캔버스 자동 비율(반응형) 스케일링 설정 */
-        #gameCanvas { 
-            width: 100%; 
-            height: auto; 
-            aspect-ratio: 4 / 3; 
-            object-fit: contain; 
-        }
-
-        /* 버튼 및 터치 반응속도 최적화 (태블릿 300ms 터치 딜레이 제거) */
-        button, div {
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;800&display=swap');
+        body {
+            font-family: 'Inter', sans-serif;
             touch-action: manipulation;
         }
-
-        /* 티처블 머신 주입 캔버스 반응형 설정 */
-        #webcam-container canvas {
-            width: 100% !important;
-            height: auto !important;
-            object-fit: cover;
-            border-radius: 0.5rem;
+        .pop-up {
+            animation: popIn 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275) forwards;
         }
-        
-        /* 팝업 애니메이션 */
-        .pop-up { animation: pop 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275) forwards; }
-        @keyframes pop {
+        @keyframes popIn {
             0% { transform: translate(-50%, -50%) scale(0.5); opacity: 0; }
             100% { transform: translate(-50%, -50%) scale(1); opacity: 1; }
         }
     </style>
 </head>
-<body class="p-3 md:p-6 lg:p-8 flex flex-col items-center min-h-screen">
+<body class="bg-slate-100 text-gray-800 min-h-screen flex flex-col items-center p-2 sm:p-4">
 
-    <!-- Header Banner -->
-    <div class="w-full max-w-6xl bg-teal-600 text-white text-center py-4 md:py-6 rounded-t-2xl shadow-lg relative z-10">
-        <h1 class="text-2xl md:text-3xl font-bold mb-1 md:mb-2">🏀 삼각비 농구 게임</h1>
-        <p class="text-sm md:text-base text-teal-100 px-2">제시된 삼각비 문제를 풀고, 정답이 있는 보기 번호(1m, 2m, 3m 자세)를 취해 슛을 쏘세요!</p>
-    </div>
+    <!-- Top Header & Score Status -->
+    <header class="w-full max-w-5xl bg-white rounded-2xl shadow-md p-4 mb-4 flex flex-wrap items-center justify-between gap-3">
+        <div class="flex items-center gap-2">
+            <span class="text-2xl sm:text-3xl">🏀</span>
+            <div>
+                <h1 class="text-lg sm:text-xl font-extrabold text-slate-800">삼각비 농구 게임</h1>
+                <p class="text-xs text-slate-500">올려다본 각도와 거리를 이용해 높이 <span class="font-bold text-red-500">x</span>를 구하세요!</p>
+            </div>
+        </div>
 
-    <!-- Main Content (Responsive Grid) -->
-    <div class="w-full max-w-6xl grid grid-cols-1 lg:grid-cols-3 gap-4 md:gap-6 bg-white shadow-xl rounded-b-2xl p-4 md:p-6 border-x-4 border-b-4 border-teal-50/50">
+        <div class="flex items-center gap-3">
+            <div class="bg-teal-50 border border-teal-200 px-4 py-2 rounded-xl text-center">
+                <span class="text-xs text-teal-600 font-bold block">현재 점수</span>
+                <span id="score" class="text-xl sm:text-2xl font-black text-teal-700">0</span>
+            </div>
+            
+            <button onclick="openScoreModal()" class="bg-teal-600 hover:bg-teal-700 active:bg-teal-800 text-white text-xs sm:text-sm font-bold py-2.5 px-3.5 rounded-xl transition shadow flex items-center gap-1">
+                🏆 점수 제출
+            </button>
+
+            <button onclick="openPasswordModal()" class="bg-slate-700 hover:bg-slate-800 active:bg-slate-900 text-white text-xs sm:text-sm font-bold py-2.5 px-3.5 rounded-xl transition shadow flex items-center gap-1">
+                🔒 전체 기록 보기
+            </button>
+        </div>
+    </header>
+
+    <!-- Main Game Container -->
+    <main class="w-full max-w-5xl flex flex-col gap-4">
         
-        <!-- Block 1: Problem Box (Order 1 on Mobile, Left-Top on Desktop) -->
-        <div class="order-1 lg:col-span-1 lg:col-start-1 lg:row-start-1 flex flex-col">
-            <div class="bg-gray-50 border border-gray-200 p-4 rounded-xl shadow-sm text-center relative h-full flex flex-col justify-center">
-                <h3 class="font-extrabold text-gray-800 mb-2 md:mb-3 text-xl md:text-2xl border-b pb-2">현재 문제</h3>
-                <p class="text-gray-700 mb-3 text-lg md:text-xl leading-relaxed text-left pl-2">
-                    골대까지의 거리는 <span id="prob-base" class="font-extrabold text-teal-600 text-xl md:text-2xl">3</span>m, 
-                    올려다본 각도는 <span id="prob-angle" class="font-extrabold text-red-500 text-xl md:text-2xl">45</span>°일 때<br>
-                    <span class="font-extrabold text-gray-900 text-lg md:text-xl mt-2 inline-block">선수의 눈의 높이와 골대 높이의 차이 x는?</span>
-                </p>
-                <!-- Options -->
-                <div class="flex justify-center gap-1.5 md:gap-2 mb-3 md:mb-4">
-                    <div id="opt-0" class="flex-1 border-2 border-teal-300 bg-white text-teal-700 py-2 md:py-3 rounded-md font-bold shadow-sm text-lg md:text-xl">① 2m</div>
-                    <div id="opt-1" class="flex-1 border-2 border-teal-300 bg-white text-teal-700 py-2 md:py-3 rounded-md font-bold shadow-sm text-lg md:text-xl">② 3m</div>
-                    <div id="opt-2" class="flex-1 border-2 border-teal-300 bg-white text-teal-700 py-2 md:py-3 rounded-md font-bold shadow-sm text-lg md:text-xl">③ 4m</div>
+        <!-- Problem Description Card -->
+        <div class="bg-white rounded-2xl p-4 shadow-md border border-slate-200">
+            <div class="flex flex-col md:flex-row md:items-center justify-between gap-3">
+                <div class="flex-1">
+                    <span class="bg-amber-100 text-amber-800 text-xs font-bold px-2.5 py-1 rounded-md mb-1.5 inline-block">문제 상황</span>
+                    <h2 class="text-sm sm:text-base md:text-lg font-bold text-slate-800 leading-relaxed">
+                        골대까지의 거리는 <span id="prob-base" class="text-teal-600 font-extrabold">0</span>m, 올려다본 각도가 <span id="prob-angle" class="text-red-500 font-extrabold">0</span>°일 때 선수의 (지면으로부터) 눈의 높이와 골대 높이의 차이 <span class="text-red-500 font-extrabold">x</span>는?
+                    </h2>
                 </div>
 
-                <!-- Next Problem Button -->
-                <button id="next-btn" onclick="nextProblem()" class="w-full bg-teal-600 hover:bg-teal-700 active:bg-teal-800 text-white font-bold py-2.5 md:py-3.5 px-4 rounded-lg shadow transition transform hover:scale-[1.02] active:scale-[0.98] flex items-center justify-center gap-2 text-base md:text-lg mt-auto">
-                    <span>다음 문제로 넘어가기</span> ➡️
-                </button>
+                <!-- Answer Choices (①, ②, ③) - Font size enlarged -->
+                <div class="grid grid-cols-3 gap-2.5 min-w-[300px] sm:min-w-[360px]">
+                    <div id="opt-0" class="bg-teal-50/70 border-2 border-teal-200 p-3 rounded-xl text-center font-black text-lg sm:text-xl text-teal-900 shadow-sm">① -</div>
+                    <div id="opt-1" class="bg-teal-50/70 border-2 border-teal-200 p-3 rounded-xl text-center font-black text-lg sm:text-xl text-teal-900 shadow-sm">② -</div>
+                    <div id="opt-2" class="bg-teal-50/70 border-2 border-teal-200 p-3 rounded-xl text-center font-black text-lg sm:text-xl text-teal-900 shadow-sm">③ -</div>
+                </div>
             </div>
         </div>
 
-        <!-- Block 2: Canvas (Order 2 on Mobile, Right-Spanning on Desktop) -->
-        <div class="order-2 lg:order-2 lg:col-span-2 lg:col-start-2 lg:row-start-1 lg:row-span-2 bg-white rounded-xl relative border border-gray-200 overflow-hidden shadow-sm flex items-center justify-center">
-            <canvas id="gameCanvas"></canvas>
+        <!-- Interactive Section: Canvas + AI Pose Recognition -->
+        <div class="grid grid-cols-1 lg:grid-cols-3 gap-4">
             
-            <!-- Result Popup (정답/오답 안내 및 다시 도전 버튼) -->
-            <div id="result-popup" class="hidden absolute top-1/2 left-1/2 pop-up text-white px-6 py-4 md:px-8 md:py-6 rounded-2xl font-bold text-center shadow-2xl z-20 flex flex-col items-center gap-3 min-w-[240px]">
-                <div id="result-text" class="text-2xl md:text-4xl">오답! ❌</div>
-                <button id="retry-btn" onclick="retryProblem()" class="hidden bg-white text-red-600 hover:bg-red-50 font-extrabold py-2 px-5 rounded-full shadow-md text-base md:text-lg transition transform hover:scale-105">
-                    다시 도전하기 🔄
-                </button>
+            <!-- Canvas Court Display (2 Cols on large screen) -->
+            <div class="lg:col-span-2 bg-white rounded-2xl shadow-md p-3 border border-slate-200 relative flex flex-col items-center justify-center overflow-hidden">
+                <canvas id="gameCanvas" class="w-full h-auto bg-slate-50 rounded-xl border border-slate-200 block"></canvas>
+
+                <!-- Result Overlay Popup -->
+                <div id="result-popup" class="hidden absolute top-1/2 left-1/2 pop-up bg-teal-600 text-white px-6 py-4 rounded-2xl font-bold text-center shadow-2xl z-20 flex flex-col items-center gap-3 min-w-[220px]">
+                    <div id="result-text" class="text-xl sm:text-2xl font-black">정답! 🏀</div>
+                    <div class="flex gap-2">
+                        <button id="retry-btn" onclick="retryProblem()" class="hidden bg-slate-800 hover:bg-slate-900 text-white text-xs font-bold py-2 px-4 rounded-lg transition">🔄 다시 도전</button>
+                        <button onclick="nextProblem()" class="bg-white text-teal-700 hover:bg-teal-50 text-xs font-extrabold py-2 px-4 rounded-lg shadow transition">다음 문제 ▶</button>
+                    </div>
+                </div>
+            </div>
+
+            <!-- AI Pose / Webcam Control Panel -->
+            <div class="bg-white rounded-2xl shadow-md p-4 border border-slate-200 flex flex-col justify-between gap-3">
+                <div>
+                    <h3 class="text-sm font-bold text-slate-800 mb-2 flex items-center justify-between">
+                        <span>📹 자세 인식 (Teachable Machine)</span>
+                        <button id="start-btn" onclick="initWebcam()" class="bg-teal-600 hover:bg-teal-700 text-white text-xs font-bold py-1.5 px-3 rounded-lg shadow transition">
+                            ▶️ 카메라 시작
+                        </button>
+                    </h3>
+
+                    <!-- Webcam Preview Display -->
+                    <div id="webcam-container" class="w-full aspect-square bg-slate-100 rounded-xl overflow-hidden flex items-center justify-center border border-dashed border-slate-300 text-slate-400 text-xs text-center p-4">
+                        [카메라 시작] 버튼을 눌러 카메라를 연결하세요.
+                    </div>
+
+                    <!-- Pose Hold Progress Gauge -->
+                    <div id="hold-gauge-container" class="hidden mt-3 w-full bg-slate-200 rounded-full h-3 overflow-hidden">
+                        <div id="hold-gauge-bar" class="bg-teal-500 h-full w-0 transition-all duration-100"></div>
+                    </div>
+
+                    <!-- Status Text Box -->
+                    <div id="recognition-status" class="mt-3 w-full text-xs font-bold text-center p-2 rounded bg-slate-50 text-slate-500 border border-slate-200">
+                        준비 후 자세를 취해주세요. (2초 유지시 슛)
+                    </div>
+                </div>
+
+                <!-- Probability Meters -->
+                <div class="space-y-2">
+                    <div class="text-xs font-bold text-slate-600">인식 확률</div>
+                    <div class="space-y-1.5">
+                        <div>
+                            <div class="flex justify-between text-[11px] font-bold text-slate-600 mb-0.5">
+                                <span>①번 자세</span><span id="prob-0">0.00</span>
+                            </div>
+                            <div class="w-full bg-slate-100 rounded-full h-2 overflow-hidden">
+                                <div id="bar-0" class="bg-teal-500 h-full w-0 transition-all"></div>
+                            </div>
+                        </div>
+                        <div>
+                            <div class="flex justify-between text-[11px] font-bold text-slate-600 mb-0.5">
+                                <span>②번 자세</span><span id="prob-1">0.00</span>
+                            </div>
+                            <div class="w-full bg-slate-100 rounded-full h-2 overflow-hidden">
+                                <div id="bar-1" class="bg-teal-500 h-full w-0 transition-all"></div>
+                            </div>
+                        </div>
+                        <div>
+                            <div class="flex justify-between text-[11px] font-bold text-slate-600 mb-0.5">
+                                <span>③번 자세</span><span id="prob-2">0.00</span>
+                            </div>
+                            <div class="w-full bg-slate-100 rounded-full h-2 overflow-hidden">
+                                <div id="bar-2" class="bg-teal-500 h-full w-0 transition-all"></div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Touch / Manual Shoot Buttons -->
+                <div class="pt-2 border-t border-slate-100">
+                    <div class="text-xs font-bold text-slate-500 mb-1.5 text-center">👇 수동 클릭/터치 제출</div>
+                    <div class="grid grid-cols-3 gap-1.5">
+                        <button id="manual-btn-0" onclick="triggerShoot(0)" class="bg-slate-100 hover:bg-teal-50 active:bg-teal-100 border border-slate-300 text-slate-800 text-sm font-bold py-2 rounded-lg transition">① -</button>
+                        <button id="manual-btn-1" onclick="triggerShoot(1)" class="bg-slate-100 hover:bg-teal-50 active:bg-teal-100 border border-slate-300 text-slate-800 text-sm font-bold py-2 rounded-lg transition">② -</button>
+                        <button id="manual-btn-2" onclick="triggerShoot(2)" class="bg-slate-100 hover:bg-teal-50 active:bg-teal-100 border border-slate-300 text-slate-800 text-sm font-bold py-2 rounded-lg transition">③ -</button>
+                    </div>
+                </div>
             </div>
         </div>
+    </main>
 
-        <!-- Block 3: AI Recognition & Score (Order 3 on Mobile, Left-Bottom on Desktop) -->
-        <div class="order-3 lg:col-span-1 lg:col-start-1 lg:row-start-2 flex flex-col gap-4">
+    <!-- Score Submission Modal -->
+    <div id="score-modal" class="hidden fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
+        <div class="bg-white rounded-2xl p-6 max-w-md w-full shadow-2xl relative">
+            <h3 class="text-xl font-bold text-slate-800 mb-2 text-center">🏆 점수 제출하기</h3>
+            <p class="text-sm text-slate-600 mb-4 text-center">선생님이 기록을 확인할 수 있도록 학번과 이름을 입력해주세요.</p>
             
-            <!-- AI Box -->
-            <div class="bg-white border border-gray-200 rounded-xl p-4 shadow-sm flex flex-col items-center">
-                <h3 class="font-bold text-gray-800 mb-2 md:mb-3 text-base md:text-lg">나의 자세 (AI 인식)</h3>
-                
-                <div id="webcam-container" class="w-full max-w-[240px] lg:max-w-full bg-gray-900 rounded-lg aspect-square mb-2 overflow-hidden flex items-center justify-center relative shadow-inner">
-                    <button id="start-btn" onclick="initWebcam()" class="bg-teal-500 hover:bg-teal-600 text-white font-bold py-2 md:py-3 px-4 md:px-6 rounded-full shadow-lg transition transform hover:scale-105 absolute z-10 text-sm md:text-base">
-                        ▶️ 웹캠 켜기
+            <div class="bg-teal-50 border border-teal-200 rounded-xl p-3 mb-4 text-center">
+                <span class="text-slate-600 font-bold text-sm">현재 점수:</span>
+                <span id="modal-score-display" class="text-2xl font-extrabold text-teal-600 ml-2">0</span>점
+            </div>
+
+            <div class="space-y-3 mb-4">
+                <div>
+                    <label class="block text-xs font-bold text-slate-700 mb-1">학번 (선택)</label>
+                    <input type="text" id="student-id" placeholder="예: 30105" class="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-teal-500">
+                </div>
+                <div>
+                    <label class="block text-xs font-bold text-slate-700 mb-1">이름 (필수)</label>
+                    <input type="text" id="student-name" placeholder="예: 홍길동" class="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-teal-500">
+                </div>
+            </div>
+
+            <div id="submit-status" class="text-xs text-center font-bold mb-3 hidden"></div>
+
+            <div class="flex gap-2">
+                <button onclick="closeScoreModal()" class="flex-1 bg-slate-200 hover:bg-slate-300 text-slate-700 py-2.5 rounded-lg font-bold text-sm transition">취소</button>
+                <button onclick="submitScoreToCloud()" class="flex-1 bg-teal-600 hover:bg-teal-700 text-white py-2.5 rounded-lg font-bold text-sm shadow transition font-bold">제출하기</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Teacher Password Modal -->
+    <div id="password-modal" class="hidden fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
+        <div class="bg-white rounded-2xl p-6 max-w-sm w-full shadow-2xl relative text-center">
+            <div class="text-3xl mb-2">🔒</div>
+            <h3 class="text-lg font-bold text-slate-800 mb-1">교사 인증</h3>
+            <p class="text-xs text-slate-600 mb-4">전체 학생 기록을 확인하려면 교사 비밀번호를 입력해 주세요.</p>
+            
+            <div class="mb-3">
+                <input type="password" id="teacher-password-input" placeholder="비밀번호 입력" onkeydown="if(event.key==='Enter') verifyTeacherPassword()" class="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm text-center focus:outline-none focus:ring-2 focus:ring-teal-500">
+            </div>
+
+            <div id="password-error-msg" class="text-xs text-red-500 font-bold mb-3 hidden">⚠️ 비밀번호가 일치하지 않습니다.</div>
+
+            <div class="flex gap-2">
+                <button onclick="closePasswordModal()" class="flex-1 bg-slate-200 hover:bg-slate-300 text-slate-700 py-2.5 rounded-lg font-bold text-xs transition">취소</button>
+                <button onclick="verifyTeacherPassword()" class="flex-1 bg-teal-600 hover:bg-teal-700 text-white py-2.5 rounded-lg font-bold text-xs shadow transition">확인</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Leaderboard / Teacher Record View Modal -->
+    <div id="leaderboard-modal" class="hidden fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
+        <div class="bg-white rounded-2xl p-6 max-w-xl w-full shadow-2xl relative max-h-[85vh] flex flex-col">
+            <div class="flex justify-between items-center mb-4 pb-2 border-b">
+                <h3 class="text-xl font-bold text-slate-800">📊 전체 학생 기록 확인</h3>
+                <button onclick="closeLeaderboardModal()" class="text-slate-400 hover:text-slate-600 font-bold text-xl px-2">&times;</button>
+            </div>
+
+            <div class="overflow-y-auto flex-1 border rounded-lg">
+                <table class="w-full text-left text-xs md:text-sm">
+                    <thead class="bg-teal-600 text-white sticky top-0">
+                        <tr>
+                            <th class="py-2.5 px-3 text-center">순위</th>
+                            <th class="py-2.5 px-3">학번</th>
+                            <th class="py-2.5 px-3">이름</th>
+                            <th class="py-2.5 px-3 text-right">점수</th>
+                            <th class="py-2.5 px-3 text-center">제출 시간</th>
+                        </tr>
+                    </thead>
+                    <tbody id="leaderboard-tbody" class="divide-y divide-slate-200 bg-white">
+                        <tr>
+                            <td colspan="5" class="py-8 text-center text-slate-400">기록을 불러오는 중입니다...</td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+
+            <div class="mt-4 pt-3 border-t flex justify-between items-center text-xs text-slate-500">
+                <div class="flex items-center gap-2">
+                    <span>* 실시간 동기화중</span>
+                    <button onclick="openResetConfirmModal()" class="bg-red-500 hover:bg-red-600 active:bg-red-700 text-white font-bold py-1.5 px-3 rounded-lg transition text-xs flex items-center gap-1 shadow-sm">
+                        🗑️ 기록 리셋
                     </button>
                 </div>
-                
-                <!-- Dynamic Recognition Status Text & Progress Bar -->
-                <div id="recognition-status-box" class="w-full mt-1 mb-3">
-                    <div id="recognition-status" class="w-full text-gray-500 font-bold text-center text-xs md:text-sm p-2 rounded bg-gray-50 transition-colors">
-                        웹캠을 켜고 자세를 취해주세요.
-                    </div>
-                    <!-- Pose Hold Gauge Bar -->
-                    <div id="hold-gauge-container" class="w-full bg-gray-200 h-2 rounded-full overflow-hidden mt-1 md:mt-2 hidden">
-                        <div id="hold-gauge-bar" class="bg-teal-500 h-full w-0 transition-all duration-75"></div>
-                    </div>
-                </div>
-
-                <!-- Progress Bars -->
-                <div id="label-container" class="w-full flex flex-col gap-1.5 md:gap-2 mb-3 md:mb-5">
-                    <div class="flex items-center text-[10px] md:text-xs font-bold text-gray-600">
-                        <span class="w-14 md:w-16 text-right mr-2">①번:</span>
-                        <div class="flex-1 bg-gray-200 h-2 md:h-3 rounded-full overflow-hidden"><div id="bar-0" class="bg-blue-400 h-full w-0 transition-all duration-100"></div></div>
-                        <span id="prob-0" class="w-8 md:w-10 text-right ml-1">0.00</span>
-                    </div>
-                    <div class="flex items-center text-[10px] md:text-xs font-bold text-gray-600">
-                        <span class="w-14 md:w-16 text-right mr-2">②번:</span>
-                        <div class="flex-1 bg-gray-200 h-2 md:h-3 rounded-full overflow-hidden"><div id="bar-1" class="bg-green-400 h-full w-0 transition-all duration-100"></div></div>
-                        <span id="prob-1" class="w-8 md:w-10 text-right ml-1">0.00</span>
-                    </div>
-                    <div class="flex items-center text-[10px] md:text-xs font-bold text-gray-600">
-                        <span class="w-14 md:w-16 text-right mr-2">③번:</span>
-                        <div class="flex-1 bg-gray-200 h-2 md:h-3 rounded-full overflow-hidden"><div id="bar-2" class="bg-red-400 h-full w-0 transition-all duration-100"></div></div>
-                        <span id="prob-2" class="w-8 md:w-10 text-right ml-1">0.00</span>
-                    </div>
-                </div>
-
-                <!-- Manual Test Buttons -->
-                <div class="w-full border-t pt-3">
-                    <div class="text-[10px] md:text-xs text-gray-400 mb-1.5 md:mb-2 text-center">웹캠 없이 수동 테스트하기 (클릭)</div>
-                    <div class="flex justify-center gap-1.5 md:gap-2">
-                        <button id="manual-btn-0" onclick="triggerShoot(0)" class="flex-1 bg-gray-200 hover:bg-gray-300 text-gray-700 py-1.5 md:py-2 rounded font-bold text-xs md:text-sm transition">① 2m</button>
-                        <button id="manual-btn-1" onclick="triggerShoot(1)" class="flex-1 bg-gray-200 hover:bg-gray-300 text-gray-700 py-1.5 md:py-2 rounded font-bold text-xs md:text-sm transition">② 3m</button>
-                        <button id="manual-btn-2" onclick="triggerShoot(2)" class="flex-1 bg-gray-200 hover:bg-gray-300 text-gray-700 py-1.5 md:py-2 rounded font-bold text-xs md:text-sm transition">③ 4m</button>
-                    </div>
-                </div>
-            </div>
-
-            <!-- Score Box -->
-            <div class="bg-teal-50 border border-teal-100 p-3 md:p-4 rounded-xl shadow-sm text-center">
-                <h3 class="font-bold text-teal-800 text-base md:text-lg mb-0.5 md:mb-1">점수</h3>
-                <div id="score" class="text-3xl md:text-4xl font-extrabold text-teal-600">0</div>
+                <button onclick="closeLeaderboardModal()" class="bg-slate-800 hover:bg-slate-900 text-white font-bold py-2 px-4 rounded-lg transition">닫기</button>
             </div>
         </div>
-
     </div>
 
-    <!-- Instructions -->
-    <div class="w-full max-w-6xl bg-gray-50 border border-gray-200 p-4 md:p-5 rounded-lg mt-4 md:mt-6 shadow-sm text-xs md:text-sm text-gray-700">
-        <h4 class="font-bold text-gray-800 mb-2">📝 게임 방법</h4>
-        <ul class="list-disc pl-5 space-y-1">
-            <li>화면에 제시되는 <strong>삼각비 문제(골대로부터의 거리와 각도)</strong>를 보고 선수의 눈의 높이와 골대 높이의 차이를 계산하세요. (공식: 높이 차 = 골대까지의 거리 × tan(각도))</li>
-            <li>계산한 높이 차이가 <strong>보기 1번(①), 2번(②), 3번(③) 중 몇 번째인지</strong> 확인하세요.</li>
-            <li>웹캠 앞에서 <strong>해당 보기 번호에 맞는 자세</strong>를 약 1.5초간 유지하면 슛을 쏸니다!</li>
-            <li>정답 보기를 선택하여 정확한 높이로 슛을 쏘면 골인! 점수가 올라갑니다.</li>
-            <li>틀린 경우 <strong>'다시 도전하기 🔄'</strong> 버튼을 눌러 정답을 다시 맞출 수 있습니다.</li>
-        </ul>
+    <!-- Reset Confirmation Modal -->
+    <div id="reset-confirm-modal" class="hidden fixed inset-0 bg-black/50 z-[60] flex items-center justify-center p-4">
+        <div class="bg-white rounded-2xl p-6 max-w-sm w-full shadow-2xl relative text-center border-2 border-red-100">
+            <div class="text-4xl mb-2">⚠️</div>
+            <h3 class="text-lg font-bold text-slate-800 mb-2">전체 기록을 리셋하시겠습니까?</h3>
+            <p class="text-xs text-slate-600 mb-4 leading-relaxed">제출된 모든 학생의 점수 기록이 완전히 삭제되며, 이 작업은 복구할 수 없습니다.</p>
+            
+            <div id="reset-status" class="text-xs font-bold mb-3 hidden"></div>
+
+            <div class="flex gap-2">
+                <button onclick="closeResetConfirmModal()" class="flex-1 bg-slate-200 hover:bg-slate-300 text-slate-700 py-2.5 rounded-lg font-bold text-xs transition">취소</button>
+                <button onclick="resetAllScores()" class="flex-1 bg-red-600 hover:bg-red-700 text-white py-2.5 rounded-lg font-bold text-xs shadow transition">삭제 완료</button>
+            </div>
+        </div>
     </div>
 
+    <!-- Cloud Synchronization Scripts -->
+    <script type="module">
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
+        import { getAuth, signInAnonymously, signInWithCustomToken } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
+        import { getFirestore, collection, addDoc, onSnapshot, getDocs, deleteDoc, doc } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+
+        const appId = typeof __app_id !== 'undefined' ? __app_id : 'trig-basketball-app';
+        const firebaseConfig = typeof __firebase_config !== 'undefined' ? JSON.parse(__firebase_config) : null;
+        const initialToken = typeof __initial_auth_token !== 'undefined' ? __initial_auth_token : null;
+
+        let db = null;
+        let auth = null;
+        let currentUser = null;
+
+        if (firebaseConfig) {
+            const app = initializeApp(firebaseConfig);
+            db = getFirestore(app);
+            auth = getAuth(app);
+
+            async function initCloudAuth() {
+                try {
+                    if (initialToken) {
+                        const cred = await signInWithCustomToken(auth, initialToken);
+                        currentUser = cred.user;
+                    } else {
+                        const cred = await signInAnonymously(auth);
+                        currentUser = cred.user;
+                    }
+                    subscribeToScores();
+                } catch (err) {
+                    console.error("클라우드 인증 실패:", err);
+                }
+            }
+            initCloudAuth();
+        }
+
+        // 실시간 점수 목록 수신
+        function subscribeToScores() {
+            if (!db) return;
+            const scoresRef = collection(db, 'artifacts', appId, 'public', 'data', 'scores');
+            
+            onSnapshot(scoresRef, (snapshot) => {
+                const scores = [];
+                snapshot.forEach((doc) => {
+                    scores.push({ id: doc.id, ...doc.data() });
+                });
+
+                scores.sort((a, b) => (b.score || 0) - (a.score || 0));
+                renderLeaderboard(scores);
+            }, (error) => {
+                console.error("점수 동기화 오류:", error);
+            });
+        }
+
+        function renderLeaderboard(scores) {
+            const tbody = document.getElementById('leaderboard-tbody');
+            if (!tbody) return;
+
+            if (scores.length === 0) {
+                tbody.innerHTML = `<tr><td colspan="5" class="py-8 text-center text-slate-400">제출된 기록이 없습니다.</td></tr>`;
+                return;
+            }
+
+            tbody.innerHTML = scores.map((s, idx) => {
+                const timeStr = s.createdAt ? new Date(s.createdAt).toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit' }) : '-';
+                return `
+                    <tr class="hover:bg-teal-50/50 transition">
+                        <td class="py-2.5 px-3 text-center font-bold text-slate-600">${idx + 1}</td>
+                        <td class="py-2.5 px-3 font-semibold text-slate-700">${escapeHtml(s.studentId || '-')}</td>
+                        <td class="py-2.5 px-3 font-semibold text-slate-800">${escapeHtml(s.studentName || '익명')}</td>
+                        <td class="py-2.5 px-3 text-right font-extrabold text-teal-600">${s.score || 0}점</td>
+                        <td class="py-2.5 px-3 text-center text-slate-400 text-xs">${timeStr}</td>
+                    </tr>
+                `;
+            }).join('');
+        }
+
+        function escapeHtml(str) {
+            return String(str).replace(/[&<>"']/g, function(m) {
+                return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[m];
+            });
+        }
+
+        // 전역 모달 제어 함수
+        window.openPasswordModal = function() {
+            const pwdInput = document.getElementById('teacher-password-input');
+            const errorMsg = document.getElementById('password-error-msg');
+            if (pwdInput) pwdInput.value = '';
+            if (errorMsg) errorMsg.classList.add('hidden');
+            document.getElementById('password-modal').classList.remove('hidden');
+            setTimeout(() => pwdInput && pwdInput.focus(), 100);
+        };
+
+        window.closePasswordModal = function() {
+            document.getElementById('password-modal').classList.add('hidden');
+        };
+
+        window.verifyTeacherPassword = function() {
+            const pwdInput = document.getElementById('teacher-password-input');
+            const errorMsg = document.getElementById('password-error-msg');
+            
+            if (pwdInput && pwdInput.value === '1111') {
+                closePasswordModal();
+                openLeaderboardModal();
+            } else {
+                if (errorMsg) errorMsg.classList.remove('hidden');
+                if (pwdInput) {
+                    pwdInput.value = '';
+                    pwdInput.focus();
+                }
+            }
+        };
+
+        window.openScoreModal = function() {
+            const scoreDisplay = document.getElementById('modal-score-display');
+            const statusEl = document.getElementById('submit-status');
+            const modalEl = document.getElementById('score-modal');
+
+            if (scoreDisplay) scoreDisplay.innerText = window.score || 0;
+            if (statusEl) statusEl.classList.add('hidden');
+            if (modalEl) modalEl.classList.remove('hidden');
+        };
+
+        window.closeScoreModal = function() {
+            document.getElementById('score-modal').classList.add('hidden');
+        };
+
+        window.openLeaderboardModal = function() {
+            document.getElementById('leaderboard-modal').classList.remove('hidden');
+        };
+
+        window.closeLeaderboardModal = function() {
+            document.getElementById('leaderboard-modal').classList.add('hidden');
+        };
+
+        window.openResetConfirmModal = function() {
+            const statusEl = document.getElementById('reset-status');
+            if (statusEl) statusEl.classList.add('hidden');
+            document.getElementById('reset-confirm-modal').classList.remove('hidden');
+        };
+
+        window.closeResetConfirmModal = function() {
+            document.getElementById('reset-confirm-modal').classList.add('hidden');
+        };
+
+        window.resetAllScores = async function() {
+            const statusEl = document.getElementById('reset-status');
+            if (!db) {
+                if (statusEl) {
+                    statusEl.innerText = "⚠️ 클라우드 DB에 연결되어 있지 않습니다.";
+                    statusEl.className = "text-xs font-bold mb-3 text-red-500";
+                    statusEl.classList.remove('hidden');
+                }
+                return;
+            }
+
+            try {
+                if (statusEl) {
+                    statusEl.innerText = "⏳ 전체 기록 삭제 중...";
+                    statusEl.className = "text-xs font-bold mb-3 text-teal-600";
+                    statusEl.classList.remove('hidden');
+                }
+
+                const scoresRef = collection(db, 'artifacts', appId, 'public', 'data', 'scores');
+                const snapshot = await getDocs(scoresRef);
+
+                const deletePromises = [];
+                snapshot.forEach((docSnapshot) => {
+                    deletePromises.push(deleteDoc(doc(db, 'artifacts', appId, 'public', 'data', 'scores', docSnapshot.id)));
+                });
+
+                await Promise.all(deletePromises);
+
+                if (statusEl) {
+                    statusEl.innerText = "✅ 모든 기록이 성공적으로 삭제되었습니다!";
+                    statusEl.className = "text-xs font-bold mb-3 text-green-600";
+                }
+
+                setTimeout(() => {
+                    closeResetConfirmModal();
+                }, 800);
+            } catch (err) {
+                console.error("기록 리셋 실패:", err);
+                if (statusEl) {
+                    statusEl.innerText = "❌ 삭제 처리 중 오류가 발생했습니다.";
+                    statusEl.className = "text-xs font-bold mb-3 text-red-500";
+                }
+            }
+        };
+
+        window.submitScoreToCloud = async function() {
+            const studentId = document.getElementById('student-id').value.trim();
+            const studentName = document.getElementById('student-name').value.trim();
+            const statusEl = document.getElementById('submit-status');
+
+            if (!studentName) {
+                if (statusEl) {
+                    statusEl.innerText = "⚠️ 이름을 입력해주세요.";
+                    statusEl.className = "text-xs text-center font-bold mb-3 text-red-500";
+                    statusEl.classList.remove('hidden');
+                }
+                return;
+            }
+
+            if (!db || !currentUser) {
+                if (statusEl) {
+                    statusEl.innerText = "⚠️ 클라우드 연결 상태를 확인 중입니다. 잠시 후 다시 시도해주세요.";
+                    statusEl.className = "text-xs text-center font-bold mb-3 text-amber-600";
+                    statusEl.classList.remove('hidden');
+                }
+                return;
+            }
+
+            try {
+                if (statusEl) {
+                    statusEl.innerText = "⏳ 기록 전송 중...";
+                    statusEl.className = "text-xs text-center font-bold mb-3 text-teal-600";
+                    statusEl.classList.remove('hidden');
+                }
+
+                const scoresRef = collection(db, 'artifacts', appId, 'public', 'data', 'scores');
+                await addDoc(scoresRef, {
+                    studentId: studentId,
+                    studentName: studentName,
+                    score: window.score || 0,
+                    userId: currentUser.uid,
+                    createdAt: Date.now()
+                });
+
+                if (statusEl) {
+                    statusEl.innerText = "✅ 성공적으로 제출되었습니다!";
+                    statusEl.className = "text-xs text-center font-bold mb-3 text-green-600";
+                }
+
+                setTimeout(() => {
+                    closeScoreModal();
+                }, 1000);
+            } catch (err) {
+                console.error("점수 제출 실패:", err);
+                if (statusEl) {
+                    statusEl.innerText = "❌ 제출 중 오류가 발생했습니다.";
+                    statusEl.className = "text-xs text-center font-bold mb-3 text-red-500";
+                }
+            }
+        };
+    </script>
+
+    <!-- Main Game Logic Script -->
     <script>
         const TM_MODEL_URL = "https://teachablemachine.withgoogle.com/models/dpHP_RGGy/";
         let model, webcam, maxPredictions;
-        let modelType = 'pose'; // 'pose' 또는 'image'
+        let modelType = 'pose';
         let isWebcamRunning = false;
         
-        // 태블릿 반응속도 및 연산 부하 개선을 위한 시간 기반 설정
         let holdTimeMs = 0;
-        const REQUIRED_HOLD_TIME_MS = 2000; // 2.0초 동안 자세 유지 시 슛 발사
+        const REQUIRED_HOLD_TIME_MS = 2000; // 2.0초 유지시 슛 발사
         let prepCooldownMs = 0; 
         const PREP_TIME_MS = 5000; // 문제 전환 후 5초 준비 유예 시간
         let lastPredictTime = 0;
 
         async function initWebcam() {
             const startBtn = document.getElementById('start-btn');
-            startBtn.innerText = "로딩 중...";
-            startBtn.disabled = true;
+            if (startBtn) {
+                startBtn.innerText = "로딩 중...";
+                startBtn.disabled = true;
+            }
 
             const modelURL = TM_MODEL_URL + "model.json";
             const metadataURL = TM_MODEL_URL + "metadata.json";
 
             try {
-                // Pose 모델 우선 시도, 실패 시 Image 모델 자동 전환
                 try {
                     modelType = 'pose';
                     model = await tmPose.load(modelURL, metadataURL);
                     maxPredictions = model.getTotalClasses();
                 } catch (poseErr) {
-                    console.warn("Pose 모델 로드 실패, Image 모델로 재시도합니다:", poseErr);
+                    console.warn("Pose 모델 로드 실패, Image 모델로 전환합니다:", poseErr);
                     modelType = 'image';
                     model = await tmImage.load(modelURL, metadataURL);
                     maxPredictions = model.getTotalClasses();
                 }
 
-                // 태블릿 CPU/GPU 연산 부하를 낮추기 위해 해상도를 200x200으로 경량화 (정확도 유지 및 처리 속도 향상)
                 const flip = true; 
                 if (modelType === 'pose') {
                     webcam = new tmPose.Webcam(200, 200, flip);
@@ -209,17 +561,21 @@
                 await webcam.play();
                 
                 const webcamContainer = document.getElementById('webcam-container');
-                webcamContainer.innerHTML = '';
-                webcamContainer.appendChild(webcam.canvas);
+                if (webcamContainer) {
+                    webcamContainer.innerHTML = '';
+                    webcamContainer.appendChild(webcam.canvas);
+                }
 
                 isWebcamRunning = true;
-                // 메인 캔버스 렌더링 스레드와 AI 추론 연산을 독립된 비동기 타이머로 분리
                 startAILoop();
             } catch (err) {
                 console.error("웹캠/모델 로드 실패:", err);
-                startBtn.innerText = "▶️ 다시 시도";
-                startBtn.disabled = false;
-                document.getElementById('recognition-status').innerText = "모델 연결 실패. 네트워크 상태나 티처블 머신 URL을 확인해 주세요.";
+                if (startBtn) {
+                    startBtn.innerText = "▶️ 다시 시도";
+                    startBtn.disabled = false;
+                }
+                const statusEl = document.getElementById('recognition-status');
+                if (statusEl) statusEl.innerText = "모델 연결 실패. 네트워크 상태를 확인해 주세요.";
             }
         }
 
@@ -238,13 +594,11 @@
                     await predict(deltaMs);
                 }
                 
-                // 태블릿 발열 및 연산 지연 방지: 약 150ms 간격으로 추론 연산 비동기 처리
                 aiTimer = setTimeout(loop, 150);
             }
             loop();
         }
 
-        // 이전 DOM 상태 캐싱을 통한 태블릿 브라우저 리플로우(Reflow) 최적화
         const lastDOMValues = { probs: [-1, -1, -1] };
 
         async function predict(deltaMs = 150) {
@@ -270,7 +624,6 @@
                 const probValue = prediction[i].probability;
                 const roundedProb = Math.round(probValue * 100);
 
-                // 값이 실제로 변경된 경우에만 DOM 요소 수정 (태블릿 브라우저 GPU/CPU 낭비 방지)
                 if (lastDOMValues.probs[i] !== roundedProb) {
                     lastDOMValues.probs[i] = roundedProb;
                     const barEl = document.getElementById(`bar-${i}`);
@@ -293,14 +646,15 @@
                 if (prepCooldownMs > 0) {
                     prepCooldownMs -= deltaMs;
                     const secondsLeft = Math.max(1, Math.ceil(prepCooldownMs / 1000));
-                    statusEl.innerText = `⏳ 준비 중... (${secondsLeft}초 후 자세 인식 시작)`;
-                    statusEl.className = "w-full font-bold text-center text-xs md:text-sm p-2 rounded bg-amber-100 text-amber-800 border border-amber-200";
+                    if (statusEl) {
+                        statusEl.innerText = `⏳ 준비 중... (${secondsLeft}초 후 자세 인식 시작)`;
+                        statusEl.className = "w-full font-bold text-center text-xs md:text-sm p-2 rounded bg-amber-100 text-amber-800 border border-amber-200";
+                    }
                     if (gaugeContainer) gaugeContainer.classList.add('hidden');
                     holdTimeMs = 0;
                     return;
                 }
 
-                // 인식 감도 최적화 (0.80 이상 시 차오름)
                 if (maxProb > 0.80) {
                     const optIndex = bestIndex;
                     const optValue = currentProblem ? currentProblem.options[optIndex] : "";
@@ -308,26 +662,32 @@
                     holdTimeMs += deltaMs;
                     const progressPercent = Math.min(100, Math.round((holdTimeMs / REQUIRED_HOLD_TIME_MS) * 100));
 
-                    statusEl.innerText = `현재 인식: [ ${optIndex + 1}번 보기 (${optValue}m) ] (${progressPercent}%)`;
-                    statusEl.className = "w-full font-bold text-center text-xs md:text-sm p-2 rounded transition-colors bg-teal-100 text-teal-800 border border-teal-300";
+                    if (statusEl) {
+                        statusEl.innerText = `현재 인식: [ ${optIndex + 1}번 보기 (${optValue}m) ] (${progressPercent}%)`;
+                        statusEl.className = "w-full font-bold text-center text-xs md:text-sm p-2 rounded transition-colors bg-teal-100 text-teal-800 border border-teal-300";
+                    }
 
                     if (gaugeContainer) {
                         gaugeContainer.classList.remove('hidden');
-                        gaugeBar.style.width = `${progressPercent}%`;
+                        if (gaugeBar) gaugeBar.style.width = `${progressPercent}%`;
                     }
 
                     if (holdTimeMs >= REQUIRED_HOLD_TIME_MS) {
                         triggerShoot(optIndex);
                         holdTimeMs = 0;
                         if (gaugeContainer) gaugeContainer.classList.add('hidden');
-                        statusEl.innerText = "🏀 슛 발사!";
-                        statusEl.className = "w-full font-bold text-center text-xs md:text-sm p-2 rounded bg-teal-600 text-white";
+                        if (statusEl) {
+                            statusEl.innerText = "🏀 슛 발사!";
+                            statusEl.className = "w-full font-bold text-center text-xs md:text-sm p-2 rounded bg-teal-600 text-white";
+                        }
                     }
                 } else {
                     holdTimeMs = 0;
                     if (gaugeContainer) gaugeContainer.classList.add('hidden');
-                    statusEl.innerText = "보기(①, ②, ③)에 맞는 자세를 취해주세요.";
-                    statusEl.className = "w-full text-gray-500 font-bold text-center text-xs md:text-sm p-2 rounded bg-gray-50 transition-colors";
+                    if (statusEl) {
+                        statusEl.innerText = "보기(①, ②, ③)에 맞는 자세를 취해주세요.";
+                        statusEl.className = "w-full text-slate-500 font-bold text-center text-xs md:text-sm p-2 rounded bg-slate-50 transition-colors";
+                    }
                 }
             } else {
                 holdTimeMs = 0;
@@ -335,21 +695,17 @@
             }
         }
 
-        // 다양한 문제 후보 정의 (골대까지의 거리, 각도, 정답값, 오답값)
         const rawProblemPool = [
-            // 30도 문제 (tan 30° = √3 / 3)
             { base: 3, angle: 30, correctValue: '√3', distractors: [3, 4] },
             { base: 6, angle: 30, correctValue: '2√3', distractors: [2, 5] },
             { base: 9, angle: 30, correctValue: '3√3', distractors: [3, 4] },
             { base: 12, angle: 30, correctValue: '4√3', distractors: [5, 8] },
 
-            // 45도 문제 (tan 45° = 1)
             { base: 3, angle: 45, correctValue: 3, distractors: [2, 4] },
             { base: 4, angle: 45, correctValue: 4, distractors: [5, 6] },
             { base: 5, angle: 45, correctValue: 5, distractors: [3, 4] },
             { base: 6, angle: 45, correctValue: 6, distractors: [4, 5] },
 
-            // 60도 문제 (tan 60° = √3)
             { base: 2, angle: 60, correctValue: '2√3', distractors: [4, 5] },
             { base: 3, angle: 60, correctValue: '3√3', distractors: [4, 6] },
             { base: 4, angle: 60, correctValue: '4√3', distractors: [5, 6] },
@@ -369,45 +725,40 @@
         }
 
         let currentProblem = null;
-        let score = 0;
-        let gameState = 'waiting'; // 'waiting', 'shooting', 'result'
+        window.score = 0;
+        let gameState = 'waiting'; 
         let selectedOptionIndex = -1;
-        let lastCorrectIndex = -1; // 이전 문제의 정답 인덱스 기록
+        let lastCorrectIndex = -1;
 
-        const canvas = document.getElementById('gameCanvas');
-        const ctx = canvas.getContext('2d');
-        
+        let canvas, ctx;
         const width = 800;
         const height = 600;
-        canvas.width = width;
-        canvas.height = height;
 
         let SCALE_X = 50; 
         let SCALE_Y = 50;
-        const FLOOR_Y = 340; // 캔버스 내 전체 그림 위치
-        const EYE_LEVEL_Y = FLOOR_Y - 130; // 210 (캐릭터 눈높이)
-        const CHARACTER_X = 80; // 캐릭터 위치 (좌측 배치)
+        const FLOOR_Y = 480; 
+        const EYE_LEVEL_Y = FLOOR_Y - 130; // 350
+        let CHARACTER_X = 90; 
         let GOAL_X = 580;
 
-        // ★ 캐릭터와 농구골대 사이의 거리를 넓혀 시원한 농구장 구도 생성 ★
         function updateScaleAndGoal() {
             if (!currentProblem) return;
 
             const maxOptionMeters = Math.max(...currentProblem.options.map(parseOptionValue));
             
-            // Y축 스케일: 백보드 및 림이 캔버스 상단에 잘리지 않도록 동적 조절
-            const maxVerticalPx = EYE_LEVEL_Y - 80;
-            SCALE_Y = maxVerticalPx / maxOptionMeters;
+            const availX = width - CHARACTER_X - 120; // 590px
+            const availY = EYE_LEVEL_Y - 70; // 280px
 
-            // X축 스케일: 골대를 캔버스 우측(520px~680px)으로 시원하게 이격하여 넓은 코트 유지
-            const minGoalX = 520;
-            const maxGoalX = 680;
-            const minBase = 3;
-            const maxBase = 12;
-            const normalizedBase = Math.min(1, Math.max(0, (currentProblem.base - minBase) / (maxBase - minBase)));
-            
-            GOAL_X = minGoalX + normalizedBase * (maxGoalX - minGoalX);
-            SCALE_X = (GOAL_X - CHARACTER_X) / currentProblem.base;
+            const scaleX = availX / currentProblem.base;
+            const scaleY = availY / maxOptionMeters;
+
+            const UNIFIED_SCALE = Math.min(scaleX, scaleY);
+            SCALE_X = UNIFIED_SCALE;
+            SCALE_Y = UNIFIED_SCALE;
+
+            CHARACTER_X = 90;
+            const sceneWidth = currentProblem.base * UNIFIED_SCALE;
+            GOAL_X = CHARACTER_X + sceneWidth;
         }
 
         function nextProblem() {
@@ -418,7 +769,6 @@
             let sortedOptions = [];
             let correctIdx = -1;
 
-            // 연속으로 같은 번호가 정답으로 나오지 않도록 문제 생성 반복
             let attempts = 0;
             while (attempts < 50) {
                 attempts++;
@@ -430,7 +780,6 @@
 
                 correctIdx = allOptions.indexOf(rawProb.correctValue);
 
-                // 이전 문제의 정답 인덱스와 다르면 채택
                 if (correctIdx !== lastCorrectIndex || attempts >= 45) {
                     candidateProblem = rawProb;
                     sortedOptions = allOptions;
@@ -449,17 +798,25 @@
             
             updateScaleAndGoal();
 
-            document.getElementById('prob-base').innerText = currentProblem.base;
-            document.getElementById('prob-angle').innerText = currentProblem.angle;
+            const pBase = document.getElementById('prob-base');
+            const pAngle = document.getElementById('prob-angle');
+            if (pBase) pBase.innerText = currentProblem.base;
+            if (pAngle) pAngle.innerText = currentProblem.angle;
 
             const opts = currentProblem.options;
-            document.getElementById('opt-0').innerText = `① ${opts[0]}m`;
-            document.getElementById('opt-1').innerText = `② ${opts[1]}m`;
-            document.getElementById('opt-2').innerText = `③ ${opts[2]}m`;
+            const opt0 = document.getElementById('opt-0');
+            const opt1 = document.getElementById('opt-1');
+            const opt2 = document.getElementById('opt-2');
+            if (opt0) opt0.innerText = `① ${opts[0]}m`;
+            if (opt1) opt1.innerText = `② ${opts[1]}m`;
+            if (opt2) opt2.innerText = `③ ${opts[2]}m`;
 
-            document.getElementById('manual-btn-0').innerText = `① ${opts[0]}m`;
-            document.getElementById('manual-btn-1').innerText = `② ${opts[1]}m`;
-            document.getElementById('manual-btn-2').innerText = `③ ${opts[2]}m`;
+            const btn0 = document.getElementById('manual-btn-0');
+            const btn1 = document.getElementById('manual-btn-1');
+            const btn2 = document.getElementById('manual-btn-2');
+            if (btn0) btn0.innerText = `① ${opts[0]}m`;
+            if (btn1) btn1.innerText = `② ${opts[1]}m`;
+            if (btn2) btn2.innerText = `③ ${opts[2]}m`;
 
             resetBall();
             gameState = 'waiting';
@@ -471,7 +828,6 @@
             if (gaugeContainer) gaugeContainer.classList.add('hidden');
         }
 
-        // 틀렸을 때 동일한 문제로 다시 도전하기
         function retryProblem() {
             const popup = document.getElementById('result-popup');
             if (popup) popup.classList.add('hidden');
@@ -486,7 +842,6 @@
             if (gaugeContainer) gaugeContainer.classList.add('hidden');
         }
 
-        // 농구공 반지름 크기 설정 (24px)
         const ball = { x: 0, y: 0, radius: 24, startX: 0, startY: 0, targetX: 0, targetY: 0, controlX: 0, controlY: 0, frame: 0, duration: 60 };
 
         function resetBall() {
@@ -500,7 +855,7 @@
             selectedOptionIndex = optIndex;
 
             const targetMeters = parseOptionValue(currentProblem.options[optIndex]);
-            const targetX = GOAL_X - 30; // 백보드 및 림 중앙
+            const targetX = GOAL_X - 30;
             const targetY = EYE_LEVEL_Y - (targetMeters * SCALE_Y);
 
             ball.startX = ball.x;
@@ -508,10 +863,9 @@
             ball.targetX = targetX;
             ball.targetY = targetY;
             
-            ball.duration = 60; // 슛 애니메이션 기간
+            ball.duration = 60; // 빠른 슛 애니메이션
             ball.frame = 0;
             
-            // 공의 정점이 캔버스 상단 영역 위로 넘어가서 잘리지 않도록 안전 상한선 설정
             const desiredApexY = Math.min(ball.startX, ball.targetY) - 50;
             const safeApexY = Math.max(20, desiredApexY);
             
@@ -543,21 +897,23 @@
             const retryBtn = document.getElementById('retry-btn');
             
             if (isCorrect) {
-                score += 10;
-                document.getElementById('score').innerText = score;
-                resultText.innerText = "정답! 🏀";
-                popup.className = "absolute top-1/2 left-1/2 pop-up bg-green-500 text-white px-6 py-4 md:px-8 md:py-6 rounded-2xl font-bold text-center shadow-2xl z-20 flex flex-col items-center gap-3 min-w-[240px]";
-                retryBtn.classList.add('hidden');
+                window.score += 10;
+                const scoreEl = document.getElementById('score');
+                if (scoreEl) scoreEl.innerText = window.score;
+                if (resultText) resultText.innerText = "정답! 🏀";
+                if (popup) popup.className = "absolute top-1/2 left-1/2 pop-up bg-teal-600 text-white px-6 py-4 rounded-2xl font-bold text-center shadow-2xl z-20 flex flex-col items-center gap-3 min-w-[220px]";
+                if (retryBtn) retryBtn.classList.add('hidden');
             } else {
-                resultText.innerText = "오답! ❌";
-                popup.className = "absolute top-1/2 left-1/2 pop-up bg-red-500 text-white px-6 py-4 md:px-8 md:py-6 rounded-2xl font-bold text-center shadow-2xl z-20 flex flex-col items-center gap-3 min-w-[240px]";
-                retryBtn.classList.remove('hidden');
+                if (resultText) resultText.innerText = "오답! ❌";
+                if (popup) popup.className = "absolute top-1/2 left-1/2 pop-up bg-red-500 text-white px-6 py-4 rounded-2xl font-bold text-center shadow-2xl z-20 flex flex-col items-center gap-3 min-w-[220px]";
+                if (retryBtn) retryBtn.classList.remove('hidden');
             }
             
-            popup.classList.remove('hidden');
+            if (popup) popup.classList.remove('hidden');
         }
 
         function drawFractionText(text, x, y, color = "black", size = 26) {
+            if (!ctx) return;
             ctx.fillStyle = color;
             ctx.font = `bold ${size}px 'Inter', sans-serif`;
             ctx.textAlign = "center";
@@ -573,44 +929,38 @@
             }
         }
 
-        // ★ 캐릭터 렌더링 ★
         function drawCharacter() {
+            if (!ctx) return;
             const cx = CHARACTER_X;
             const cy = FLOOR_Y;
             const skinColor = "#ffedd5";
 
-            // 1. 살색 다리 (길이 60px)
             ctx.fillStyle = skinColor; 
             ctx.fillRect(cx - 18, cy - 60, 14, 60);
             ctx.fillRect(cx + 4, cy - 60, 14, 60);
 
-            // 2. 파란 반바지
             ctx.fillStyle = "#2563eb";
             ctx.fillRect(cx - 22, cy - 60, 20, 26);
             ctx.fillRect(cx + 2, cy - 60, 20, 26);
             
-            // 3. 파란 신발
             ctx.fillStyle = "#1d4ed8";
             ctx.beginPath();
             ctx.arc(cx - 11, cy, 11, 0, Math.PI, true);
             ctx.arc(cx + 11, cy, 11, 0, Math.PI, true);
             ctx.fill();
 
-            // 4. 하얀색 나시티 상체 (높이 70px)
             ctx.fillStyle = "#ffffff";
             ctx.fillRect(cx - 26, cy - 130, 52, 70);
             ctx.strokeStyle = "#cbd5e1";
             ctx.lineWidth = 2;
             ctx.strokeRect(cx - 26, cy - 130, 52, 70);
 
-            // 5. 가슴 텍스트 ('하안' - 턱에 가려지지 않도록 한 줄로 위치 조절)
             ctx.fillStyle = "black";
             ctx.font = "bold 17px 'Inter', sans-serif";
             ctx.textAlign = "center";
             ctx.textBaseline = "middle";
             ctx.fillText("하안", cx, cy - 82);
 
-            // 6. 민소매(나시티) 스타일 살색 팔
             ctx.strokeStyle = skinColor;
             ctx.lineWidth = 14;
             ctx.lineCap = "round";
@@ -621,7 +971,6 @@
             ctx.lineTo(cx + 48, cy - 165);
             ctx.stroke();
 
-            // 나시티 어깨 스트랩
             ctx.strokeStyle = "#cbd5e1";
             ctx.lineWidth = 2;
             ctx.beginPath();
@@ -631,7 +980,6 @@
             ctx.lineTo(cx + 26, cy - 130);
             ctx.stroke();
 
-            // 7. 살색 얼굴 원 (중심 y값 = EYE_LEVEL_Y)
             const faceY = EYE_LEVEL_Y;
             const faceRadius = 32;
             ctx.fillStyle = skinColor; 
@@ -639,32 +987,27 @@
             ctx.arc(cx, faceY, faceRadius, 0, Math.PI * 2); 
             ctx.fill();
 
-            // 8. 머리카락 (정수리 상단 부위)
             ctx.fillStyle = "#0f172a";
             ctx.beginPath();
             ctx.arc(cx, faceY, faceRadius, Math.PI * 1.22, Math.PI * 1.78, false); 
             ctx.fill();
 
-            // 앞머리 볼륨
             ctx.beginPath();
             ctx.arc(cx, faceY - 14, 20, Math.PI * 1.1, Math.PI * 1.9, false);
             ctx.fill();
 
-            // 9. 큰 눈과 이목구비 (눈 위치 faceY - 2 가 EYE_LEVEL_Y 기준선과 정밀 일치)
             ctx.fillStyle = "#0f172a";
             ctx.beginPath();
-            ctx.arc(cx - 12, faceY - 2, 6, 0, Math.PI * 2); // 왼쪽 눈
-            ctx.arc(cx + 12, faceY - 2, 6, 0, Math.PI * 2); // 오른쪽 눈
+            ctx.arc(cx - 12, faceY - 2, 6, 0, Math.PI * 2);
+            ctx.arc(cx + 12, faceY - 2, 6, 0, Math.PI * 2);
             ctx.fill();
 
-            // 눈동자 하이라이트
             ctx.fillStyle = "#ffffff";
             ctx.beginPath();
             ctx.arc(cx - 14, faceY - 4, 2.5, 0, Math.PI * 2);
             ctx.arc(cx + 10, faceY - 4, 2.5, 0, Math.PI * 2);
             ctx.fill();
             
-            // 웃는 입
             ctx.strokeStyle = "#0f172a";
             ctx.lineWidth = 3.5;
             ctx.beginPath();
@@ -673,9 +1016,11 @@
         }
 
         function drawMathUI() {
-            if (!currentProblem) return;
+            if (!currentProblem || !ctx) return;
 
-            // 바닥선
+            ctx.fillStyle = "#f1f5f9";
+            ctx.fillRect(0, FLOOR_Y, width, height - FLOOR_Y);
+
             ctx.strokeStyle = "#cbd5e1";
             ctx.lineWidth = 5;
             ctx.beginPath();
@@ -683,7 +1028,6 @@
             ctx.lineTo(width, FLOOR_Y);
             ctx.stroke();
 
-            // 선수의 눈높이 수평 기준선 (밑변)
             ctx.strokeStyle = "#94a3b8";
             ctx.lineWidth = 3;
             ctx.setLineDash([8, 6]);
@@ -693,15 +1037,12 @@
             ctx.stroke();
             ctx.setLineDash([]);
 
-            // 골대로부터의 거리 표시 (밑변 거리)
             const midX = (CHARACTER_X + GOAL_X) / 2;
             drawFractionText(currentProblem.base + "m", midX, EYE_LEVEL_Y + 28, "#0d9488", 28);
 
-            // 정답 골대 높이 y값
             const correctTargetMeters = parseOptionValue(currentProblem.options[currentProblem.correctIndex]);
             const correctTargetY = EYE_LEVEL_Y - (correctTargetMeters * SCALE_Y);
 
-            // 시선선 (눈 -> 골대 림 사선)
             ctx.strokeStyle = "#f87171";
             ctx.lineWidth = 2.5;
             ctx.setLineDash([6, 5]);
@@ -711,7 +1052,6 @@
             ctx.stroke();
             ctx.setLineDash([]);
 
-            // 올려다보는 각도 표시 (Arc)
             const radius = 75;
             const sightDeltaX = (GOAL_X - 30) - CHARACTER_X;
             const sightDeltaY = EYE_LEVEL_Y - correctTargetY;
@@ -725,17 +1065,12 @@
             ctx.arc(CHARACTER_X, EYE_LEVEL_Y, radius, startAngle, endAngle, true);
             ctx.stroke();
 
-            // 각도 텍스트
             const textX = CHARACTER_X + Math.cos(endAngle / 2) * (radius + 28);
             const textY = EYE_LEVEL_Y + Math.sin(endAngle / 2) * (radius + 28);
             drawFractionText(currentProblem.angle + "°", textX, textY, "#ef4444", 26);
 
-            // -------------------------------------------------------------
-            // ★ 선수의 눈의 높이와 골대 높이의 차이 'x' 수직 표시선 및 라벨 ★
-            // -------------------------------------------------------------
-            const xDimensionX = GOAL_X + 25; // 골대 오른쪽에 수직 치수선 배치
+            const xDimensionX = GOAL_X + 25;
 
-            // 수직 치수선 (눈높이 ~ 골대 림 높이)
             ctx.strokeStyle = "#ef4444";
             ctx.lineWidth = 3;
             ctx.setLineDash([5, 4]);
@@ -745,7 +1080,6 @@
             ctx.stroke();
             ctx.setLineDash([]);
 
-            // 치수선 양 끝 마감 틱(Tick)
             ctx.strokeStyle = "#ef4444";
             ctx.lineWidth = 3.5;
             ctx.beginPath();
@@ -755,7 +1089,6 @@
             ctx.lineTo(xDimensionX + 8, correctTargetY);
             ctx.stroke();
 
-            // 'x' 라벨 텍스트 표시
             const xMidY = (EYE_LEVEL_Y + correctTargetY) / 2;
             ctx.fillStyle = "#ef4444";
             ctx.font = "italic bold 36px 'Inter', sans-serif";
@@ -764,16 +1097,14 @@
             ctx.fillText("x", xDimensionX + 12, xMidY);
         }
 
-        // ★ 농구골대 구조 ★
         function drawGoal() {
+            if (!ctx) return;
             const correctTargetMeters = parseOptionValue(currentProblem.options[currentProblem.correctIndex]);
             const targetY = EYE_LEVEL_Y - (correctTargetMeters * SCALE_Y);
 
-            // 1. 골대 메인 기둥
             ctx.fillStyle = "#475569";
             ctx.fillRect(GOAL_X - 6, targetY - 45, 12, FLOOR_Y - (targetY - 45));
 
-            // 2. 백보드
             const boardTopY = targetY - 60;
             const boardHeight = 110;
             ctx.fillStyle = "white";
@@ -782,20 +1113,16 @@
             ctx.lineWidth = 3.5;
             ctx.strokeRect(GOAL_X - 8, boardTopY, 12, boardHeight);
 
-            // 백보드 안쪽 사각형
             ctx.strokeStyle = "#ea580c";
             ctx.lineWidth = 2.5;
             ctx.strokeRect(GOAL_X - 8, targetY - 25, 10, 35);
 
-            // 3. 농구 림
             ctx.fillStyle = "#ea580c";
             ctx.fillRect(GOAL_X - 52, targetY, 44, 7);
 
-            // 브라켓 연결부
             ctx.fillStyle = "#c2410c";
             ctx.fillRect(GOAL_X - 8, targetY - 3, 8, 12);
 
-            // 4. 그물 (Net)
             ctx.strokeStyle = "#cbd5e1";
             ctx.lineWidth = 2;
             ctx.beginPath();
@@ -806,8 +1133,8 @@
             ctx.stroke();
         }
 
-        // ★ 농구공 렌더링 ★
         function drawBall() {
+            if (!ctx) return;
             ctx.fillStyle = "#ea580c";
             ctx.beginPath();
             ctx.arc(ball.x, ball.y, ball.radius, 0, Math.PI * 2);
@@ -838,21 +1165,28 @@
         }
 
         function gameLoop() {
-            ctx.clearRect(0, 0, width, height);
+            if (ctx) {
+                ctx.clearRect(0, 0, width, height);
 
-            if (currentProblem) {
-                updateBall();
-                drawMathUI();
-                drawGoal();
-                drawCharacter();
-                drawBall();
+                if (currentProblem) {
+                    updateBall();
+                    drawMathUI();
+                    drawGoal();
+                    drawCharacter();
+                    drawBall();
+                }
             }
 
             requestAnimationFrame(gameLoop);
         }
 
-        // 페이지 로드 시 게임 및 애니메이션 루프 시작
         window.onload = function() {
+            canvas = document.getElementById('gameCanvas');
+            if (canvas) {
+                canvas.width = width;
+                canvas.height = height;
+                ctx = canvas.getContext('2d');
+            }
             nextProblem();
             gameLoop();
         };
