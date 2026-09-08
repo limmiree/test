@@ -173,7 +173,7 @@
         let holdTimeMs = 0;
         const REQUIRED_HOLD_TIME_MS = 2000; // 2.0초 동안 자세 유지 시 슛 발사
         let prepCooldownMs = 0; 
-        const PREP_TIME_MS = 1500; // 문제 전환 후 1.5초 준비 유예 시간
+        const PREP_TIME_MS = 5000; // 문제 전환 후 5초 준비 유예 시간
         let lastPredictTime = 0;
 
         async function initWebcam() {
@@ -382,32 +382,32 @@
         canvas.width = width;
         canvas.height = height;
 
-        let PIXELS_PER_METER = 50; 
-        const FLOOR_Y = 320; // 바닥선을 320px 높이로 대폭 상단 이동 (기존 460 -> 320)
-        const EYE_LEVEL_Y = FLOOR_Y - 130; // 190 (캐릭터 눈높이)
-        const CHARACTER_X = 170; 
-        let GOAL_X;
+        let SCALE_X = 50; 
+        let SCALE_Y = 50;
+        const FLOOR_Y = 340; // 캔버스 내 전체 그림 위치
+        const EYE_LEVEL_Y = FLOOR_Y - 130; // 210 (캐릭터 눈높이)
+        const CHARACTER_X = 80; // 캐릭터 위치 (좌측 배치)
+        let GOAL_X = 580;
 
-        // ★ 문제의 높이와 거리에 따라 피사체가 짤리지 않도록 스케일 동적 자동 조절 ★
+        // ★ 캐릭터와 농구골대 사이의 거리를 넓혀 시원한 농구장 구도 생성 ★
         function updateScaleAndGoal() {
             if (!currentProblem) return;
 
             const maxOptionMeters = Math.max(...currentProblem.options.map(parseOptionValue));
             
-            // 캔버스 상단 여유공간(골대 백보드 60px 포함)을 고려하여 y축 스케일 계산
-            const maxVerticalPx = EYE_LEVEL_Y - 70;
-            const scaleY = maxVerticalPx / maxOptionMeters;
-            
-            // 캔버스 우측 여유공간(80px)을 남기도록 x축 스케일 계산
-            const maxHorizontalPx = 500;
-            const scaleX = maxHorizontalPx / currentProblem.base;
-            
-            // 가장 적절한 축적 비율 선택
-            PIXELS_PER_METER = Math.min(scaleX, scaleY, 55);
-            PIXELS_PER_METER = Math.max(PIXELS_PER_METER, 18);
+            // Y축 스케일: 백보드 및 림이 캔버스 상단에 잘리지 않도록 동적 조절
+            const maxVerticalPx = EYE_LEVEL_Y - 80;
+            SCALE_Y = maxVerticalPx / maxOptionMeters;
 
-            GOAL_X = CHARACTER_X + (currentProblem.base * PIXELS_PER_METER);
-            if (GOAL_X > width - 90) GOAL_X = width - 90;
+            // X축 스케일: 골대를 캔버스 우측(520px~680px)으로 시원하게 이격하여 넓은 코트 유지
+            const minGoalX = 520;
+            const maxGoalX = 680;
+            const minBase = 3;
+            const maxBase = 12;
+            const normalizedBase = Math.min(1, Math.max(0, (currentProblem.base - minBase) / (maxBase - minBase)));
+            
+            GOAL_X = minGoalX + normalizedBase * (maxGoalX - minGoalX);
+            SCALE_X = (GOAL_X - CHARACTER_X) / currentProblem.base;
         }
 
         function nextProblem() {
@@ -501,19 +501,19 @@
 
             const targetMeters = parseOptionValue(currentProblem.options[optIndex]);
             const targetX = GOAL_X - 30; // 백보드 및 림 중앙
-            const targetY = EYE_LEVEL_Y - (targetMeters * PIXELS_PER_METER);
+            const targetY = EYE_LEVEL_Y - (targetMeters * SCALE_Y);
 
             ball.startX = ball.x;
             ball.startY = ball.y;
             ball.targetX = targetX;
             ball.targetY = targetY;
             
-            ball.duration = 60; // 슛 애니메이션 기간 (120프레임 -> 60프레임으로 2배 빠르게)
+            ball.duration = 60; // 슛 애니메이션 기간
             ball.frame = 0;
             
             // 공의 정점이 캔버스 상단 영역 위로 넘어가서 잘리지 않도록 안전 상한선 설정
-            const desiredApexY = Math.min(ball.startX, ball.targetY) - 45;
-            const safeApexY = Math.max(12, desiredApexY);
+            const desiredApexY = Math.min(ball.startX, ball.targetY) - 50;
+            const safeApexY = Math.max(20, desiredApexY);
             
             ball.controlX = (ball.startX + ball.targetX) / 2;
             ball.controlY = safeApexY;
@@ -699,7 +699,7 @@
 
             // 정답 골대 높이 y값
             const correctTargetMeters = parseOptionValue(currentProblem.options[currentProblem.correctIndex]);
-            const correctTargetY = EYE_LEVEL_Y - (correctTargetMeters * PIXELS_PER_METER);
+            const correctTargetY = EYE_LEVEL_Y - (correctTargetMeters * SCALE_Y);
 
             // 시선선 (눈 -> 골대 림 사선)
             ctx.strokeStyle = "#f87171";
@@ -713,8 +713,11 @@
 
             // 올려다보는 각도 표시 (Arc)
             const radius = 75;
+            const sightDeltaX = (GOAL_X - 30) - CHARACTER_X;
+            const sightDeltaY = EYE_LEVEL_Y - correctTargetY;
+            const visualAngle = Math.atan2(sightDeltaY, sightDeltaX);
             const startAngle = 0;
-            const endAngle = -currentProblem.angle * (Math.PI / 180);
+            const endAngle = -visualAngle;
 
             ctx.strokeStyle = "#ef4444";
             ctx.lineWidth = 3.5;
@@ -764,7 +767,7 @@
         // ★ 농구골대 구조 ★
         function drawGoal() {
             const correctTargetMeters = parseOptionValue(currentProblem.options[currentProblem.correctIndex]);
-            const targetY = EYE_LEVEL_Y - (correctTargetMeters * PIXELS_PER_METER);
+            const targetY = EYE_LEVEL_Y - (correctTargetMeters * SCALE_Y);
 
             // 1. 골대 메인 기둥
             ctx.fillStyle = "#475569";
