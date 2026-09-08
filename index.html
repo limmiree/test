@@ -20,6 +20,11 @@
             object-fit: contain; 
         }
 
+        /* 버튼 및 터치 반응속도 최적화 (태블릿 300ms 터치 딜레이 제거) */
+        button, div {
+            touch-action: manipulation;
+        }
+
         /* 티처블 머신 주입 캔버스 반응형 설정 */
         #webcam-container canvas {
             width: 100% !important;
@@ -166,11 +171,10 @@
         
         // 태블릿 반응속도 및 연산 부하 개선을 위한 시간 기반 설정
         let holdTimeMs = 0;
-        const REQUIRED_HOLD_TIME_MS = 1200; // 1.2초 동안 자세 유지 시 슛 발사
+        const REQUIRED_HOLD_TIME_MS = 2000; // 2.0초 동안 자세 유지 시 슛 발사
         let prepCooldownMs = 0; 
         const PREP_TIME_MS = 1500; // 문제 전환 후 1.5초 준비 유예 시간
         let lastPredictTime = 0;
-        const PREDICT_INTERVAL_MS = 100; // AI 인식 연산 주기 (100ms = 초당 10회 추론으로 태블릿 부하 대폭 감소)
 
         async function initWebcam() {
             const startBtn = document.getElementById('start-btn');
@@ -193,11 +197,12 @@
                     maxPredictions = model.getTotalClasses();
                 }
 
+                // 태블릿 CPU/GPU 연산 부하를 낮추기 위해 해상도를 200x200으로 경량화 (정확도 유지 및 처리 속도 향상)
                 const flip = true; 
                 if (modelType === 'pose') {
-                    webcam = new tmPose.Webcam(300, 300, flip);
+                    webcam = new tmPose.Webcam(200, 200, flip);
                 } else {
-                    webcam = new tmImage.Webcam(300, 300, flip);
+                    webcam = new tmImage.Webcam(200, 200, flip);
                 }
                 
                 await webcam.setup();
@@ -208,7 +213,8 @@
                 webcamContainer.appendChild(webcam.canvas);
 
                 isWebcamRunning = true;
-                window.requestAnimationFrame(webcamLoop);
+                // 메인 캔버스 렌더링 스레드와 AI 추론 연산을 독립된 비동기 타이머로 분리
+                startAILoop();
             } catch (err) {
                 console.error("웹캠/모델 로드 실패:", err);
                 startBtn.innerText = "▶️ 다시 시도";
@@ -217,22 +223,31 @@
             }
         }
 
-        async function webcamLoop(timestamp) {
-            if (isWebcamRunning) {
-                webcam.update();
+        let aiTimer = null;
+        function startAILoop() {
+            if (aiTimer) clearTimeout(aiTimer);
+            
+            async function loop() {
+                if (!isWebcamRunning) return;
                 
-                // 태블릿 프레임 저하 방지: 100ms마다만 AI 추론 연산 실행
-                if (!lastPredictTime || timestamp - lastPredictTime >= PREDICT_INTERVAL_MS) {
-                    const deltaMs = lastPredictTime ? (timestamp - lastPredictTime) : PREDICT_INTERVAL_MS;
-                    lastPredictTime = timestamp;
+                if (webcam) {
+                    webcam.update();
+                    const now = performance.now();
+                    const deltaMs = lastPredictTime ? (now - lastPredictTime) : 150;
+                    lastPredictTime = now;
                     await predict(deltaMs);
                 }
                 
-                window.requestAnimationFrame(webcamLoop);
+                // 태블릿 발열 및 연산 지연 방지: 약 150ms 간격으로 추론 연산 비동기 처리
+                aiTimer = setTimeout(loop, 150);
             }
+            loop();
         }
 
-        async function predict(deltaMs = 100) {
+        // 이전 DOM 상태 캐싱을 통한 태블릿 브라우저 리플로우(Reflow) 최적화
+        const lastDOMValues = { probs: [-1, -1, -1] };
+
+        async function predict(deltaMs = 150) {
             if (!model || !webcam) return;
 
             let prediction;
@@ -252,15 +267,20 @@
             let bestIndex = 0;
 
             for (let i = 0; i < maxPredictions; i++) {
-                const classProb = prediction[i].probability.toFixed(2);
-                const barEl = document.getElementById(`bar-${i}`);
-                const probEl = document.getElementById(`prob-${i}`);
-                
-                if (barEl) barEl.style.width = Math.round(classProb * 100) + "%";
-                if (probEl) probEl.innerText = classProb;
+                const probValue = prediction[i].probability;
+                const roundedProb = Math.round(probValue * 100);
 
-                if (prediction[i].probability > maxProb) {
-                    maxProb = prediction[i].probability;
+                // 값이 실제로 변경된 경우에만 DOM 요소 수정 (태블릿 브라우저 GPU/CPU 낭비 방지)
+                if (lastDOMValues.probs[i] !== roundedProb) {
+                    lastDOMValues.probs[i] = roundedProb;
+                    const barEl = document.getElementById(`bar-${i}`);
+                    const probEl = document.getElementById(`prob-${i}`);
+                    if (barEl) barEl.style.width = roundedProb + "%";
+                    if (probEl) probEl.innerText = probValue.toFixed(2);
+                }
+
+                if (probValue > maxProb) {
+                    maxProb = probValue;
                     bestIndex = i;
                 }
             }
@@ -363,8 +383,8 @@
         canvas.height = height;
 
         let PIXELS_PER_METER = 50; 
-        const FLOOR_Y = height - 60; // 540
-        const EYE_LEVEL_Y = FLOOR_Y - 130; // 410 (캐릭터 눈높이 고정 위치)
+        const FLOOR_Y = 320; // 바닥선을 320px 높이로 대폭 상단 이동 (기존 460 -> 320)
+        const EYE_LEVEL_Y = FLOOR_Y - 130; // 190 (캐릭터 눈높이)
         const CHARACTER_X = 170; 
         let GOAL_X;
 
@@ -374,17 +394,17 @@
 
             const maxOptionMeters = Math.max(...currentProblem.options.map(parseOptionValue));
             
-            // 캔버스 상단 여유공간(80px)을 남기도록 y축 스케일 계산
-            const maxVerticalPx = 270;
+            // 캔버스 상단 여유공간(골대 백보드 60px 포함)을 고려하여 y축 스케일 계산
+            const maxVerticalPx = EYE_LEVEL_Y - 70;
             const scaleY = maxVerticalPx / maxOptionMeters;
             
             // 캔버스 우측 여유공간(80px)을 남기도록 x축 스케일 계산
             const maxHorizontalPx = 500;
             const scaleX = maxHorizontalPx / currentProblem.base;
             
-            // 가장 적절한 축적 비율 선택 (32 ~ 65 사이)
-            PIXELS_PER_METER = Math.min(scaleX, scaleY, 65);
-            PIXELS_PER_METER = Math.max(PIXELS_PER_METER, 32);
+            // 가장 적절한 축적 비율 선택
+            PIXELS_PER_METER = Math.min(scaleX, scaleY, 55);
+            PIXELS_PER_METER = Math.max(PIXELS_PER_METER, 18);
 
             GOAL_X = CHARACTER_X + (currentProblem.base * PIXELS_PER_METER);
             if (GOAL_X > width - 90) GOAL_X = width - 90;
@@ -466,22 +486,8 @@
             if (gaugeContainer) gaugeContainer.classList.add('hidden');
         }
 
-        // 틀렸을 때 동일한 문제로 다시 도전하기
-        function retryProblem() {
-            const popup = document.getElementById('result-popup');
-            if (popup) popup.classList.add('hidden');
-
-            resetBall();
-            gameState = 'waiting';
-            prepCooldown = PREP_TIME_FRAMES;
-            holdTime = 0;
-
-            const gaugeContainer = document.getElementById('hold-gauge-container');
-            if (gaugeContainer) gaugeContainer.classList.add('hidden');
-        }
-
         // 농구공 반지름 크기 설정 (24px)
-        const ball = { x: 0, y: 0, radius: 24, startX: 0, startY: 0, targetX: 0, targetY: 0, controlX: 0, controlY: 0, frame: 0, duration: 120 };
+        const ball = { x: 0, y: 0, radius: 24, startX: 0, startY: 0, targetX: 0, targetY: 0, controlX: 0, controlY: 0, frame: 0, duration: 60 };
 
         function resetBall() {
             ball.x = CHARACTER_X + 25;
@@ -502,12 +508,12 @@
             ball.targetX = targetX;
             ball.targetY = targetY;
             
-            ball.duration = 120;
+            ball.duration = 60; // 슛 애니메이션 기간 (120프레임 -> 60프레임으로 2배 빠르게)
             ball.frame = 0;
             
-            // 공의 정점이 캔버스 상단 영역(y = 30) 위로 넘어가서 잘리지 않도록 안전 상한선 설정
-            const desiredApexY = Math.min(ball.startY, ball.targetY) - 90;
-            const safeApexY = Math.max(30, desiredApexY);
+            // 공의 정점이 캔버스 상단 영역 위로 넘어가서 잘리지 않도록 안전 상한선 설정
+            const desiredApexY = Math.min(ball.startX, ball.targetY) - 45;
+            const safeApexY = Math.max(12, desiredApexY);
             
             ball.controlX = (ball.startX + ball.targetX) / 2;
             ball.controlY = safeApexY;
@@ -842,6 +848,7 @@
             requestAnimationFrame(gameLoop);
         }
 
+        // 페이지 로드 시 게임 및 애니메이션 루프 시작
         window.onload = function() {
             nextProblem();
             gameLoop();
