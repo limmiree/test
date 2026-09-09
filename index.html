@@ -66,7 +66,7 @@
                     </h2>
                 </div>
 
-                <!-- Answer Choices (①, ②, ③) - Font size enlarged -->
+                <!-- Answer Choices (①, ②, ③) -->
                 <div class="grid grid-cols-3 gap-2.5 min-w-[300px] sm:min-w-[360px]">
                     <div id="opt-0" class="bg-teal-50/70 border-2 border-teal-200 p-3 rounded-xl text-center font-black text-lg sm:text-xl text-teal-900 shadow-sm">① -</div>
                     <div id="opt-1" class="bg-teal-50/70 border-2 border-teal-200 p-3 rounded-xl text-center font-black text-lg sm:text-xl text-teal-900 shadow-sm">② -</div>
@@ -78,7 +78,7 @@
         <!-- Interactive Section: Canvas + AI Pose Recognition -->
         <div class="grid grid-cols-1 lg:grid-cols-3 gap-4">
             
-            <!-- Canvas Court Display (2 Cols on large screen) -->
+            <!-- Canvas Court Display -->
             <div class="lg:col-span-2 bg-white rounded-2xl shadow-md p-3 border border-slate-200 relative flex flex-col items-center justify-center overflow-hidden">
                 <canvas id="gameCanvas" class="w-full h-auto bg-slate-50 rounded-xl border border-slate-200 block"></canvas>
 
@@ -188,7 +188,7 @@
 
             <div class="flex gap-2">
                 <button onclick="closeScoreModal()" class="flex-1 bg-slate-200 hover:bg-slate-300 text-slate-700 py-2.5 rounded-lg font-bold text-sm transition">취소</button>
-                <button onclick="submitScoreToCloud()" class="flex-1 bg-teal-600 hover:bg-teal-700 text-white py-2.5 rounded-lg font-bold text-sm shadow transition font-bold">제출하기</button>
+                <button onclick="submitScoreToCloud()" class="flex-1 bg-teal-600 hover:bg-teal-700 text-white py-2.5 rounded-lg font-bold text-sm shadow transition">제출하기</button>
             </div>
         </div>
     </div>
@@ -271,12 +271,23 @@
     <!-- Cloud Synchronization Scripts -->
     <script type="module">
         import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
-        import { getAuth, signInAnonymously, signInWithCustomToken } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
+        import { getAuth, signInAnonymously } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
         import { getFirestore, collection, addDoc, onSnapshot, getDocs, deleteDoc, doc } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
 
-        const appId = typeof __app_id !== 'undefined' ? __app_id : 'trig-basketball-app';
-        const firebaseConfig = typeof __firebase_config !== 'undefined' ? JSON.parse(__firebase_config) : null;
-        const initialToken = typeof __initial_auth_token !== 'undefined' ? __initial_auth_token : null;
+        // 🔑 본인의 파이어베이스 콘솔에서 복사한 firebaseConfig 값을 여기에 입력하세요.
+        const myFirebaseConfig = {
+            apiKey: "YOUR_API_KEY",
+            authDomain: "YOUR_PROJECT_ID.firebaseapp.com",
+            projectId: "YOUR_PROJECT_ID",
+            storageBucket: "YOUR_PROJECT_ID.appspot.com",
+            messagingSenderId: "YOUR_MESSAGING_SENDER_ID",
+            appId: "YOUR_APP_ID"
+        };
+
+        // 내부 환경 변수 또는 직접 입력한 Firebase 설정 사용
+        const firebaseConfig = (myFirebaseConfig && myFirebaseConfig.apiKey !== "YOUR_API_KEY") 
+            ? myFirebaseConfig 
+            : (typeof __firebase_config !== 'undefined' ? JSON.parse(__firebase_config) : null);
 
         let db = null;
         let auth = null;
@@ -289,25 +300,22 @@
 
             async function initCloudAuth() {
                 try {
-                    if (initialToken) {
-                        const cred = await signInWithCustomToken(auth, initialToken);
-                        currentUser = cred.user;
-                    } else {
-                        const cred = await signInAnonymously(auth);
-                        currentUser = cred.user;
-                    }
+                    const cred = await signInAnonymously(auth);
+                    currentUser = cred.user;
                     subscribeToScores();
                 } catch (err) {
                     console.error("클라우드 인증 실패:", err);
                 }
             }
             initCloudAuth();
+        } else {
+            console.warn("Firebase 설정이 지정되지 않았습니다. myFirebaseConfig에 키를 입력해주세요.");
         }
 
-        // 실시간 점수 목록 수신
+        // 실시간 점수 목록 수신 (Firestore 'scores' 컬렉션)
         function subscribeToScores() {
             if (!db) return;
-            const scoresRef = collection(db, 'artifacts', appId, 'public', 'data', 'scores');
+            const scoresRef = collection(db, 'scores');
             
             onSnapshot(scoresRef, (snapshot) => {
                 const scores = [];
@@ -315,6 +323,7 @@
                     scores.push({ id: doc.id, ...doc.data() });
                 });
 
+                // 점수 내림차순 정렬
                 scores.sort((a, b) => (b.score || 0) - (a.score || 0));
                 renderLeaderboard(scores);
             }, (error) => {
@@ -351,7 +360,7 @@
             });
         }
 
-        // 전역 모달 제어 함수
+        // 모달 및 교사 기능 전역 연결
         window.openPasswordModal = function() {
             const pwdInput = document.getElementById('teacher-password-input');
             const errorMsg = document.getElementById('password-error-msg');
@@ -369,6 +378,7 @@
             const pwdInput = document.getElementById('teacher-password-input');
             const errorMsg = document.getElementById('password-error-msg');
             
+            // 초기 설정 교사 비밀번호: 1111
             if (pwdInput && pwdInput.value === '1111') {
                 closePasswordModal();
                 openLeaderboardModal();
@@ -417,7 +427,7 @@
             const statusEl = document.getElementById('reset-status');
             if (!db) {
                 if (statusEl) {
-                    statusEl.innerText = "⚠️ 클라우드 DB에 연결되어 있지 않습니다.";
+                    statusEl.innerText = "⚠️ 클라우드 DB에 연결되어 있지 않습니다. Firebase 설정을 확인해주세요.";
                     statusEl.className = "text-xs font-bold mb-3 text-red-500";
                     statusEl.classList.remove('hidden');
                 }
@@ -431,12 +441,12 @@
                     statusEl.classList.remove('hidden');
                 }
 
-                const scoresRef = collection(db, 'artifacts', appId, 'public', 'data', 'scores');
+                const scoresRef = collection(db, 'scores');
                 const snapshot = await getDocs(scoresRef);
 
                 const deletePromises = [];
                 snapshot.forEach((docSnapshot) => {
-                    deletePromises.push(deleteDoc(doc(db, 'artifacts', appId, 'public', 'data', 'scores', docSnapshot.id)));
+                    deletePromises.push(deleteDoc(doc(db, 'scores', docSnapshot.id)));
                 });
 
                 await Promise.all(deletePromises);
@@ -472,9 +482,9 @@
                 return;
             }
 
-            if (!db || !currentUser) {
+            if (!db) {
                 if (statusEl) {
-                    statusEl.innerText = "⚠️ 클라우드 연결 상태를 확인 중입니다. 잠시 후 다시 시도해주세요.";
+                    statusEl.innerText = "⚠️ Firebase 설정 정보가 입력되지 않았습니다.";
                     statusEl.className = "text-xs text-center font-bold mb-3 text-amber-600";
                     statusEl.classList.remove('hidden');
                 }
@@ -488,12 +498,12 @@
                     statusEl.classList.remove('hidden');
                 }
 
-                const scoresRef = collection(db, 'artifacts', appId, 'public', 'data', 'scores');
+                const scoresRef = collection(db, 'scores');
                 await addDoc(scoresRef, {
                     studentId: studentId,
                     studentName: studentName,
                     score: window.score || 0,
-                    userId: currentUser.uid,
+                    userId: currentUser ? currentUser.uid : 'anonymous',
                     createdAt: Date.now()
                 });
 
@@ -508,7 +518,7 @@
             } catch (err) {
                 console.error("점수 제출 실패:", err);
                 if (statusEl) {
-                    statusEl.innerText = "❌ 제출 중 오류가 발생했습니다.";
+                    statusEl.innerText = "❌ 제출 중 오류가 발생했습니다. (Firestore 보안 규칙을 확인해주세요)";
                     statusEl.className = "text-xs text-center font-bold mb-3 text-red-500";
                 }
             }
@@ -523,9 +533,9 @@
         let isWebcamRunning = false;
         
         let holdTimeMs = 0;
-        const REQUIRED_HOLD_TIME_MS = 2000; // 2.0초 유지시 슛 발사
+        const REQUIRED_HOLD_TIME_MS = 2000;
         let prepCooldownMs = 0; 
-        const PREP_TIME_MS = 5000; // 문제 전환 후 5초 준비 유예 시간
+        const PREP_TIME_MS = 5000;
         let lastPredictTime = 0;
 
         async function initWebcam() {
@@ -737,7 +747,7 @@
         let SCALE_X = 50; 
         let SCALE_Y = 50;
         const FLOOR_Y = 480; 
-        const EYE_LEVEL_Y = FLOOR_Y - 130; // 350
+        const EYE_LEVEL_Y = FLOOR_Y - 130;
         let CHARACTER_X = 90; 
         let GOAL_X = 580;
 
@@ -746,8 +756,8 @@
 
             const maxOptionMeters = Math.max(...currentProblem.options.map(parseOptionValue));
             
-            const availX = width - CHARACTER_X - 120; // 590px
-            const availY = EYE_LEVEL_Y - 70; // 280px
+            const availX = width - CHARACTER_X - 120;
+            const availY = EYE_LEVEL_Y - 70;
 
             const scaleX = availX / currentProblem.base;
             const scaleY = availY / maxOptionMeters;
@@ -863,7 +873,7 @@
             ball.targetX = targetX;
             ball.targetY = targetY;
             
-            ball.duration = 60; // 빠른 슛 애니메이션
+            ball.duration = 60;
             ball.frame = 0;
             
             const desiredApexY = Math.min(ball.startX, ball.targetY) - 50;
