@@ -2,1198 +2,1061 @@
 <html lang="ko">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>삼각비 농구 게임</title>
-    <!-- Tailwind CSS -->
+    <!-- 모바일 폼 입력 시 자동 확대 방지를 위해 maximum-scale=1.0, user-scalable=no 추가 -->
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>방탈출: 건물 높이의 비밀</title>
     <script src="https://cdn.tailwindcss.com"></script>
-    <!-- TensorFlow.js and Teachable Machine Libraries -->
-    <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@1.3.1/dist/tf.min.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/@teachablemachine/pose@0.8/dist/teachablemachine-pose.min.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/@teachablemachine/image@0.8/dist/teachablemachine-image.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
+    
     <style>
-        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;800&display=swap');
         body {
+            margin: 0;
+            overflow: hidden; /* 모바일에서 전체 스크롤 방지 */
             font-family: 'Inter', sans-serif;
-            touch-action: manipulation;
+            background-color: #1a202c;
         }
-        .pop-up {
-            animation: popIn 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275) forwards;
+        
+        #main-wrapper {
+            position: relative;
+            width: 100vw;
+            height: 100vh;
+            display: flex;
+            flex-direction: row; /* 데스크탑 기본: 행 방향 */
         }
-        @keyframes popIn {
-            0% { transform: translate(-50%, -50%) scale(0.5); opacity: 0; }
-            100% { transform: translate(-50%, -50%) scale(1); opacity: 1; }
+
+        #canvas-container {
+            position: relative;
+            flex: 1; /* 데스크탑에서 전체 화면 차지 */
+            height: 100%;
+            overflow: hidden;
+        }
+        
+        #ui-panel {
+            position: absolute;
+            top: 20px;
+            right: 20px;
+            width: 350px;
+            background: rgba(255, 255, 255, 0.95);
+            padding: 24px;
+            border-radius: 16px;
+            box-shadow: 0 10px 25px rgba(0,0,0,0.2);
+            backdrop-filter: blur(10px);
+            color: #1e293b;
+            z-index: 10;
+        }
+
+        #info-panel {
+            position: absolute;
+            bottom: 20px;
+            left: 20px;
+            background: rgba(0, 0, 0, 0.7);
+            color: white;
+            padding: 15px;
+            border-radius: 8px;
+            font-size: 0.85rem;
+            max-width: 300px;
+            pointer-events: none;
+            z-index: 10;
+        }
+
+        .slider-container {
+            margin-bottom: 20px;
+        }
+        .slider-label {
+            display: flex;
+            justify-content: space-between;
+            font-weight: 600;
+            color: #4a5568;
+            margin-bottom: 8px;
+            font-size: 0.9rem;
+        }
+        input[type=range] {
+            width: 100%;
+            cursor: pointer;
+            accent-color: #3182ce;
+            height: 6px;
+            background: #e2e8f0;
+            border-radius: 4px;
+            appearance: none;
+        }
+        input[type=range]::-webkit-slider-thumb {
+            appearance: none;
+            width: 16px;
+            height: 16px;
+            background: #3182ce;
+            border-radius: 50%;
+            border: 2px solid white;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.3);
+        }
+
+        #mission-panel {
+            margin-top: 20px;
+            padding-top: 15px;
+            border-top: 2px dashed #cbd5e1;
+        }
+        .input-group {
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+            margin-top: 10px;
+        }
+        input[type=number] {
+            flex: 1;
+            padding: 10px;
+            border-radius: 8px;
+            border: 1px solid #94a3b8;
+            background: #ffffff;
+            color: #1e293b;
+            font-size: 1.1rem;
+            text-align: center;
+            outline: none;
+            transition: border-color 0.2s;
+        }
+        input[type=number]:focus {
+            border-color: #3182ce;
+        }
+        button {
+            padding: 10px 20px;
+            background: #3182ce;
+            color: white;
+            border: none;
+            border-radius: 8px;
+            font-weight: bold;
+            cursor: pointer;
+            transition: transform 0.1s, background-color 0.2s;
+        }
+        button:hover {
+            background-color: #2b6cb0;
+        }
+        button:active {
+            transform: translateY(2px);
+        }
+        
+        .math-text {
+            font-family: 'Times New Roman', Times, serif;
+            font-style: italic;
+        }
+
+        #trig-btn {
+            background: #ffffff;
+            color: #1e293b;
+            padding: 6px 12px;
+            border-radius: 8px;
+            font-weight: bold;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.08);
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            transition: all 0.2s;
+            border: 1px solid #cbd5e1;
+            font-size: 0.85rem;
+        }
+        #trig-btn:hover {
+            background: #f1f5f9;
+        }
+
+        #message-box {
+            display: none;
+            position: fixed;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            background: rgba(0, 0, 0, 0.88);
+            border: 2px solid #ef4444;
+            color: white;
+            padding: 20px 30px;
+            border-radius: 12px;
+            font-size: 1.1rem;
+            font-weight: bold;
+            z-index: 50;
+            text-align: center;
+            box-shadow: 0 0 20px rgba(239, 68, 68, 0.5);
+            max-width: 400px;
+            width: 90%;
+            line-height: 1.5;
+        }
+        
+        #success-overlay {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100vw;
+            height: 100vh;
+            background: rgba(0, 0, 0, 0.8);
+            z-index: 100;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            backdrop-filter: blur(5px);
+            text-align: center;
+            padding: 20px;
+        }
+
+        #trig-modal {
+            display: none;
+            position: fixed;
+            top: 0; left: 0; width: 100vw; height: 100vh;
+            background: rgba(0,0,0,0.6);
+            z-index: 1000;
+            justify-content: center;
+            align-items: center;
+            backdrop-filter: blur(4px);
+        }
+        #trig-content {
+            background: white;
+            border-radius: 12px;
+            width: 90%;
+            max-width: 400px;
+            max-height: 80vh;
+            display: flex;
+            flex-direction: column;
+            box-shadow: 0 20px 25px -5px rgba(0,0,0,0.1);
+            overflow: hidden;
+        }
+        #trig-header {
+            padding: 16px;
+            border-bottom: 1px solid #e2e8f0;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            background: #f8fafc;
+        }
+        #trig-body {
+            padding: 0;
+            overflow-y: auto;
+            flex-grow: 1;
+        }
+        .trig-table {
+            width: 100%;
+            border-collapse: collapse;
+            text-align: center;
+        }
+        .trig-table th, .trig-table td {
+            padding: 10px 8px;
+            border-bottom: 1px solid #e2e8f0;
+            font-size: 0.95rem;
+        }
+        .trig-table th {
+            background: #f1f5f9;
+            position: sticky;
+            top: 0;
+            z-index: 1;
+            color: #475569;
+        }
+
+        @media (max-width: 768px) {
+            #main-wrapper {
+                flex-direction: column; /* 세로 분할 */
+            }
+            #canvas-container {
+                flex: none;
+                height: 45vh; /* 3D 화면이 상단 45% 차지 */
+                width: 100%;
+            }
+            #ui-panel {
+                position: relative; /* 화면을 가리지 않고 아래에 안착 */
+                top: 0; right: 0;
+                width: 100%;
+                height: 55vh; /* UI가 하단 55% 차지 */
+                border-radius: 20px 20px 0 0;
+                box-shadow: 0 -4px 15px rgba(0,0,0,0.1);
+                padding: 15px 20px;
+                display: flex;
+                flex-direction: column;
+                justify-content: space-evenly; /* 스크롤 없이 공간 자동 분배 */
+            }
+            
+            /* 모바일에서 불필요한 마진 제거하여 공간 확보 */
+            .mb-5, .mb-3, .slider-container { margin-bottom: 0 !important; }
+            #mission-panel { margin-top: 0; padding-top: 5px; }
+            
+            /* 타이포그래피 미세 조정 */
+            .text-xl { font-size: 1.15rem; }
+            h3.text-md { font-size: 0.9rem; margin-bottom: 2px; }
+            p.text-sm { font-size: 0.75rem; line-height: 1.3; }
+            .slider-label { font-size: 0.8rem; margin-bottom: 5px; }
+            
+            /* 조작 방법 패널 모바일화 */
+            #info-panel {
+                bottom: 10px;
+                left: 10px;
+                padding: 10px;
+                font-size: 0.75rem;
+                background: rgba(0, 0, 0, 0.4); /* 덜 가리도록 반투명도 조절 */
+            }
+            
+            .trig-table th, .trig-table td {
+                padding: 8px 4px;
+                font-size: 0.85rem;
+            }
         }
     </style>
 </head>
-<body class="bg-slate-100 text-gray-800 min-h-screen flex flex-col items-center p-2 sm:p-4">
-
-    <!-- Top Header & Score Status -->
-    <header class="w-full max-w-5xl bg-white rounded-2xl shadow-md p-4 mb-4 flex flex-wrap items-center justify-between gap-3">
-        <div class="flex items-center gap-2">
-            <span class="text-2xl sm:text-3xl">🏀</span>
-            <div>
-                <h1 class="text-lg sm:text-xl font-extrabold text-slate-800">삼각비 농구 게임</h1>
-                <p class="text-xs text-slate-500">올려다본 각도와 거리를 이용해 높이 <span class="font-bold text-red-500">x</span>를 구하세요!</p>
+<body>
+    <div id="main-wrapper">
+        <div id="canvas-container">
+            <div id="info-panel">
+                <p class="font-bold mb-1 text-blue-300">조작 방법</p>
+                <ul class="list-disc pl-4 space-y-1 text-gray-200">
+                    <li class="hidden md:list-item">마우스 좌클릭 드래그: 카메라 회전</li>
+                    <li class="hidden md:list-item">마우스 휠: 화면 확대/축소</li>
+                    <li class="md:hidden">터치 드래그: 카메라 회전</li>
+                    <li class="md:hidden">두 손가락: 화면 확대/축소</li>
+                </ul>
             </div>
         </div>
 
-        <div class="flex items-center gap-3">
-            <div class="bg-teal-50 border border-teal-200 px-4 py-2 rounded-xl text-center">
-                <span class="text-xs text-teal-600 font-bold block">현재 점수</span>
-                <span id="score" class="text-xl sm:text-2xl font-black text-teal-700">0</span>
+        <div id="ui-panel">
+            <div class="flex items-center justify-between mb-3">
+                <h2 class="text-xl font-bold text-gray-800 flex items-center gap-2">
+                    <span>🔒</span> 방탈출 미션
+                </h2>
+                <button id="trig-btn">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                        <rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect>
+                        <line x1="3" y1="9" x2="21" y2="9"></line>
+                        <line x1="9" y1="21" x2="9" y2="9"></line>
+                    </svg>
+                    삼각비표
+                </button>
             </div>
             
-            <button onclick="openScoreModal()" class="bg-teal-600 hover:bg-teal-700 active:bg-teal-800 text-white text-xs sm:text-sm font-bold py-2.5 px-3.5 rounded-xl transition shadow flex items-center gap-1">
-                🏆 점수 제출
-            </button>
-
-            <button onclick="openPasswordModal()" class="bg-slate-700 hover:bg-slate-800 active:bg-slate-900 text-white text-xs sm:text-sm font-bold py-2.5 px-3.5 rounded-xl transition shadow flex items-center gap-1">
-                🔒 전체 기록 보기
-            </button>
-        </div>
-    </header>
-
-    <!-- Main Game Container -->
-    <main class="w-full max-w-5xl flex flex-col gap-4">
-        
-        <!-- Problem Description Card -->
-        <div class="bg-white rounded-2xl p-4 shadow-md border border-slate-200">
-            <div class="flex flex-col md:flex-row md:items-center justify-between gap-3">
-                <div class="flex-1">
-                    <span class="bg-amber-100 text-amber-800 text-xs font-bold px-2.5 py-1 rounded-md mb-1.5 inline-block">문제 상황</span>
-                    <h2 class="text-sm sm:text-base md:text-lg font-bold text-slate-800 leading-relaxed">
-                        골대까지의 거리는 <span id="prob-base" class="text-teal-600 font-extrabold">0</span>m, 올려다본 각도가 <span id="prob-angle" class="text-red-500 font-extrabold">0</span>°일 때 선수의 (지면으로부터) 눈의 높이와 골대 높이의 차이 <span class="text-red-500 font-extrabold">x</span>는?
-                    </h2>
-                </div>
-
-                <!-- Answer Choices (①, ②, ③) -->
-                <div class="grid grid-cols-3 gap-2.5 min-w-[300px] sm:min-w-[360px]">
-                    <div id="opt-0" class="bg-teal-50/70 border-2 border-teal-200 p-3 rounded-xl text-center font-black text-lg sm:text-xl text-teal-900 shadow-sm">① -</div>
-                    <div id="opt-1" class="bg-teal-50/70 border-2 border-teal-200 p-3 rounded-xl text-center font-black text-lg sm:text-xl text-teal-900 shadow-sm">② -</div>
-                    <div id="opt-2" class="bg-teal-50/70 border-2 border-teal-200 p-3 rounded-xl text-center font-black text-lg sm:text-xl text-teal-900 shadow-sm">③ -</div>
-                </div>
+            <div class="mb-5 border-l-4 border-blue-500 pl-3">
+                <h3 class="text-md font-bold text-blue-700 mb-1">문제.</h3>
+                <p class="text-sm text-gray-600 leading-relaxed">
+                    각도를 **건물 꼭대기(최대 각도)**로 조절한 뒤, 삼각비표를 이용하여 건물 전체의 높이를 구하여라.<br>
+                    <span class="text-xs text-gray-500">(반올림하여 소수점 아래 둘째자리까지 입력)</span>
+                </p>
             </div>
-        </div>
-
-        <!-- Interactive Section: Canvas + AI Pose Recognition -->
-        <div class="grid grid-cols-1 lg:grid-cols-3 gap-4">
             
-            <!-- Canvas Court Display -->
-            <div class="lg:col-span-2 bg-white rounded-2xl shadow-md p-3 border border-slate-200 relative flex flex-col items-center justify-center overflow-hidden">
-                <canvas id="gameCanvas" class="w-full h-auto bg-slate-50 rounded-xl border border-slate-200 block"></canvas>
-
-                <!-- Result Overlay Popup -->
-                <div id="result-popup" class="hidden absolute top-1/2 left-1/2 pop-up bg-teal-600 text-white px-6 py-4 rounded-2xl font-bold text-center shadow-2xl z-20 flex flex-col items-center gap-3 min-w-[220px]">
-                    <div id="result-text" class="text-xl sm:text-2xl font-black">정답! 🏀</div>
-                    <div class="flex gap-2">
-                        <button id="retry-btn" onclick="retryProblem()" class="hidden bg-slate-800 hover:bg-slate-900 text-white text-xs font-bold py-2 px-4 rounded-lg transition">🔄 다시 도전</button>
-                        <button onclick="nextProblem()" class="bg-white text-teal-700 hover:bg-teal-50 text-xs font-extrabold py-2 px-4 rounded-lg shadow transition">다음 문제 ▶</button>
-                    </div>
+            <div class="slider-container">
+                <div class="slider-label">
+                    <span>관찰자 키 (<span class="math-text">h₁</span>)</span>
+                    <span id="val-height" class="text-blue-600 font-bold">1.60 m</span>
                 </div>
+                <input type="range" id="slider-height" min="1.4" max="2.0" step="0.01" value="1.60">
             </div>
-
-            <!-- AI Pose / Webcam Control Panel -->
-            <div class="bg-white rounded-2xl shadow-md p-4 border border-slate-200 flex flex-col justify-between gap-3">
-                <div>
-                    <h3 class="text-sm font-bold text-slate-800 mb-2 flex items-center justify-between">
-                        <span>📹 자세 인식 (Teachable Machine)</span>
-                        <button id="start-btn" onclick="initWebcam()" class="bg-teal-600 hover:bg-teal-700 text-white text-xs font-bold py-1.5 px-3 rounded-lg shadow transition">
-                            ▶️ 카메라 시작
-                        </button>
-                    </h3>
-
-                    <!-- Webcam Preview Display -->
-                    <div id="webcam-container" class="w-full aspect-square bg-slate-100 rounded-xl overflow-hidden flex items-center justify-center border border-dashed border-slate-300 text-slate-400 text-xs text-center p-4">
-                        [카메라 시작] 버튼을 눌러 카메라를 연결하세요.
-                    </div>
-
-                    <!-- Pose Hold Progress Gauge -->
-                    <div id="hold-gauge-container" class="hidden mt-3 w-full bg-slate-200 rounded-full h-3 overflow-hidden">
-                        <div id="hold-gauge-bar" class="bg-teal-500 h-full w-0 transition-all duration-100"></div>
-                    </div>
-
-                    <!-- Status Text Box -->
-                    <div id="recognition-status" class="mt-3 w-full text-xs font-bold text-center p-2 rounded bg-slate-50 text-slate-500 border border-slate-200">
-                        준비 후 자세를 취해주세요. (2초 유지시 슛)
-                    </div>
-                </div>
-
-                <!-- Probability Meters -->
-                <div class="space-y-2">
-                    <div class="text-xs font-bold text-slate-600">인식 확률</div>
-                    <div class="space-y-1.5">
-                        <div>
-                            <div class="flex justify-between text-[11px] font-bold text-slate-600 mb-0.5">
-                                <span>①번 자세</span><span id="prob-0">0.00</span>
-                            </div>
-                            <div class="w-full bg-slate-100 rounded-full h-2 overflow-hidden">
-                                <div id="bar-0" class="bg-teal-500 h-full w-0 transition-all"></div>
-                            </div>
-                        </div>
-                        <div>
-                            <div class="flex justify-between text-[11px] font-bold text-slate-600 mb-0.5">
-                                <span>②번 자세</span><span id="prob-1">0.00</span>
-                            </div>
-                            <div class="w-full bg-slate-100 rounded-full h-2 overflow-hidden">
-                                <div id="bar-1" class="bg-teal-500 h-full w-0 transition-all"></div>
-                            </div>
-                        </div>
-                        <div>
-                            <div class="flex justify-between text-[11px] font-bold text-slate-600 mb-0.5">
-                                <span>③번 자세</span><span id="prob-2">0.00</span>
-                            </div>
-                            <div class="w-full bg-slate-100 rounded-full h-2 overflow-hidden">
-                                <div id="bar-2" class="bg-teal-500 h-full w-0 transition-all"></div>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-
-                <!-- Touch / Manual Shoot Buttons -->
-                <div class="pt-2 border-t border-slate-100">
-                    <div class="text-xs font-bold text-slate-500 mb-1.5 text-center">👇 수동 클릭/터치 제출</div>
-                    <div class="grid grid-cols-3 gap-1.5">
-                        <button id="manual-btn-0" onclick="triggerShoot(0)" class="bg-slate-100 hover:bg-teal-50 active:bg-teal-100 border border-slate-300 text-slate-800 text-sm font-bold py-2 rounded-lg transition">① -</button>
-                        <button id="manual-btn-1" onclick="triggerShoot(1)" class="bg-slate-100 hover:bg-teal-50 active:bg-teal-100 border border-slate-300 text-slate-800 text-sm font-bold py-2 rounded-lg transition">② -</button>
-                        <button id="manual-btn-2" onclick="triggerShoot(2)" class="bg-slate-100 hover:bg-teal-50 active:bg-teal-100 border border-slate-300 text-slate-800 text-sm font-bold py-2 rounded-lg transition">③ -</button>
-                    </div>
-                </div>
-            </div>
-        </div>
-    </main>
-
-    <!-- Score Submission Modal -->
-    <div id="score-modal" class="hidden fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
-        <div class="bg-white rounded-2xl p-6 max-w-md w-full shadow-2xl relative">
-            <h3 class="text-xl font-bold text-slate-800 mb-2 text-center">🏆 점수 제출하기</h3>
-            <p class="text-sm text-slate-600 mb-4 text-center">선생님이 기록을 확인할 수 있도록 학번과 이름을 입력해주세요.</p>
             
-            <div class="bg-teal-50 border border-teal-200 rounded-xl p-3 mb-4 text-center">
-                <span class="text-slate-600 font-bold text-sm">현재 점수:</span>
-                <span id="modal-score-display" class="text-2xl font-extrabold text-teal-600 ml-2">0</span>점
-            </div>
-
-            <div class="space-y-3 mb-4">
-                <div>
-                    <label class="block text-xs font-bold text-slate-700 mb-1">학번 (선택)</label>
-                    <input type="text" id="student-id" placeholder="예: 30105" class="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-teal-500">
+            <div class="slider-container">
+                <div class="slider-label">
+                    <span>건물까지 거리 (<span class="math-text">d</span>)</span>
+                    <span id="val-distance" class="text-blue-600 font-bold">20.0 m</span>
                 </div>
-                <div>
-                    <label class="block text-xs font-bold text-slate-700 mb-1">이름 (필수)</label>
-                    <input type="text" id="student-name" placeholder="예: 홍길동" class="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-teal-500">
-                </div>
+                <input type="range" id="slider-distance" min="5" max="60" step="0.5" value="20.0">
             </div>
-
-            <div id="submit-status" class="text-xs text-center font-bold mb-3 hidden"></div>
-
-            <div class="flex gap-2">
-                <button onclick="closeScoreModal()" class="flex-1 bg-slate-200 hover:bg-slate-300 text-slate-700 py-2.5 rounded-lg font-bold text-sm transition">취소</button>
-                <button onclick="submitScoreToCloud()" class="flex-1 bg-teal-600 hover:bg-teal-700 text-white py-2.5 rounded-lg font-bold text-sm shadow transition font-bold">제출하기</button>
+            
+            <div class="slider-container">
+                <div class="slider-label">
+                    <span>올려다보는 각도 (<span class="math-text">θ</span>)</span>
+                    <span id="val-angle" class="text-blue-600 font-bold">35°</span>
+                </div>
+                <input type="range" id="slider-angle" min="5" max="75" step="1" value="35">
+            </div>
+            
+            <div id="mission-panel">
+                <div class="text-sm text-gray-600 mb-2 font-medium">
+                    힌트: <span class="math-text font-bold">H = h₁ + d × tan(θ)</span>
+                </div>
+                <div class="input-group">
+                    <input type="number" id="user-answer" placeholder="예: 22.60" step="0.01">
+                    <button id="btn-submit">문 열기</button>
+                </div>
             </div>
         </div>
     </div>
 
-    <!-- Teacher Password Modal -->
-    <div id="password-modal" class="hidden fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
-        <div class="bg-white rounded-2xl p-6 max-w-sm w-full shadow-2xl relative text-center">
-            <div class="text-3xl mb-2">🔒</div>
-            <h3 class="text-lg font-bold text-slate-800 mb-1">교사 인증</h3>
-            <p class="text-xs text-slate-600 mb-4">전체 학생 기록을 확인하려면 교사 비밀번호를 입력해 주세요.</p>
-            
-            <div class="mb-3">
-                <input type="password" id="teacher-password-input" placeholder="비밀번호 입력" onkeydown="if(event.key==='Enter') verifyTeacherPassword()" class="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm text-center focus:outline-none focus:ring-2 focus:ring-teal-500">
+    <div id="trig-modal">
+        <div id="trig-content">
+            <div id="trig-header">
+                <h3 class="font-bold text-lg text-slate-800">교과서 삼각비표</h3>
+                <button id="trig-close" class="text-slate-500 hover:text-slate-800 transition-colors">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                        <line x1="18" y1="6" x2="6" y2="18"></line>
+                        <line x1="6" y1="6" x2="18" y2="18"></line>
+                    </svg>
+                </button>
             </div>
-
-            <div id="password-error-msg" class="text-xs text-red-500 font-bold mb-3 hidden">⚠️ 비밀번호가 일치하지 않습니다.</div>
-
-            <div class="flex gap-2">
-                <button onclick="closePasswordModal()" class="flex-1 bg-slate-200 hover:bg-slate-300 text-slate-700 py-2.5 rounded-lg font-bold text-xs transition">취소</button>
-                <button onclick="verifyTeacherPassword()" class="flex-1 bg-teal-600 hover:bg-teal-700 text-white py-2.5 rounded-lg font-bold text-xs shadow transition">확인</button>
+            <div id="trig-body">
+                <!-- 테이블이 JS로 생성되어 들어갈 위치 -->
             </div>
         </div>
     </div>
 
-    <!-- Leaderboard / Teacher Record View Modal -->
-    <div id="leaderboard-modal" class="hidden fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
-        <div class="bg-white rounded-2xl p-6 max-w-xl w-full shadow-2xl relative max-h-[85vh] flex flex-col">
-            <div class="flex justify-between items-center mb-4 pb-2 border-b">
-                <h3 class="text-xl font-bold text-slate-800">📊 전체 학생 기록 확인</h3>
-                <button onclick="closeLeaderboardModal()" class="text-slate-400 hover:text-slate-600 font-bold text-xl px-2">&times;</button>
-            </div>
+    <div id="message-box">틀렸습니다!<br><span class="text-sm font-normal mt-2 block text-gray-300">다시 계산해 보세요.</span></div>
 
-            <div class="overflow-y-auto flex-1 border rounded-lg">
-                <table class="w-full text-left text-xs md:text-sm">
-                    <thead class="bg-teal-600 text-white sticky top-0">
-                        <tr>
-                            <th class="py-2.5 px-3 text-center">순위</th>
-                            <th class="py-2.5 px-3">학번</th>
-                            <th class="py-2.5 px-3">이름</th>
-                            <th class="py-2.5 px-3 text-right">점수</th>
-                            <th class="py-2.5 px-3 text-center">제출 시간</th>
-                        </tr>
-                    </thead>
-                    <tbody id="leaderboard-tbody" class="divide-y divide-slate-200 bg-white">
-                        <tr>
-                            <td colspan="5" class="py-8 text-center text-slate-400">기록을 불러오는 중입니다...</td>
-                        </tr>
-                    </tbody>
-                </table>
-            </div>
-
-            <div class="mt-4 pt-3 border-t flex justify-between items-center text-xs text-slate-500">
-                <div class="flex items-center gap-2">
-                    <span>* 실시간 동기화중</span>
-                    <button onclick="openResetConfirmModal()" class="bg-red-500 hover:bg-red-600 active:bg-red-700 text-white font-bold py-1.5 px-3 rounded-lg transition text-xs flex items-center gap-1 shadow-sm">
-                        🗑️ 기록 리셋
-                    </button>
-                </div>
-                <button onclick="closeLeaderboardModal()" class="bg-slate-800 hover:bg-slate-900 text-white font-bold py-2 px-4 rounded-lg transition">닫기</button>
-            </div>
-        </div>
+    <div id="success-overlay">
+        <h1 class="text-4xl md:text-5xl font-extrabold text-transparent bg-clip-text bg-gradient-to-r from-green-400 to-blue-500 mb-4 drop-shadow-lg">
+            탈출 성공!
+        </h1>
+        <p class="text-lg md:text-xl text-white mb-8 font-bold">정확한 건물의 높이를 구하여 하안중학교 문이 열렸습니다.</p>
+        <button id="btn-next-stage" class="px-6 py-3 bg-white text-slate-900 rounded-full font-bold hover:bg-slate-200 transition-colors shadow-lg" style="color: #1e293b;">
+            2단계로 이동하기 ➔
+        </button>
     </div>
 
-    <!-- Reset Confirmation Modal -->
-    <div id="reset-confirm-modal" class="hidden fixed inset-0 bg-black/50 z-[60] flex items-center justify-center p-4">
-        <div class="bg-white rounded-2xl p-6 max-w-sm w-full shadow-2xl relative text-center border-2 border-red-100">
-            <div class="text-4xl mb-2">⚠️</div>
-            <h3 class="text-lg font-bold text-slate-800 mb-2">전체 기록을 리셋하시겠습니까?</h3>
-            <p class="text-xs text-slate-600 mb-4 leading-relaxed">제출된 모든 학생의 점수 기록이 완전히 삭제되며, 이 작업은 복구할 수 없습니다.</p>
-            
-            <div id="reset-status" class="text-xs font-bold mb-3 hidden"></div>
-
-            <div class="flex gap-2">
-                <button onclick="closeResetConfirmModal()" class="flex-1 bg-slate-200 hover:bg-slate-300 text-slate-700 py-2.5 rounded-lg font-bold text-xs transition">취소</button>
-                <button onclick="resetAllScores()" class="flex-1 bg-red-600 hover:bg-red-700 text-white py-2.5 rounded-lg font-bold text-xs shadow transition">삭제 완료</button>
-            </div>
-        </div>
-    </div>
-
-    <!-- Firebase Realtime Cloud Integration -->
-    <script type="module">
-        import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
-        import { getAuth, signInAnonymously } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
-        import { getFirestore, collection, addDoc, onSnapshot, getDocs, deleteDoc, doc } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
-
-        // 파이어베이스 프로젝트 설정 값 (사용자 실제 키 적용)
-        const firebaseConfig = {
-            apiKey: "AIzaSyCr9wJ7WP9MkhqTL3WIVQMf5kHK_FqdVWc",
-            authDomain: "basketball-e24ec.firebaseapp.com",
-            projectId: "basketball-e24ec",
-            storageBucket: "basketball-e24ec.firebasestorage.app",
-            messagingSenderId: "768880591706",
-            appId: "1:768880591706:web:8ad5848f47e82e59fda963",
-            measurementId: "G-GTZQC6GRWV"
-        };
-
-        let db = null;
-        let auth = null;
-        let currentUser = null;
-
-        try {
-            const app = initializeApp(firebaseConfig);
-            db = getFirestore(app);
-            auth = getAuth(app);
-
-            async function initCloudAuth() {
-                try {
-                    const cred = await signInAnonymously(auth);
-                    currentUser = cred.user;
-                    subscribeToScores();
-                } catch (err) {
-                    console.error("클라우드 인증 실패:", err);
-                }
-            }
-            initCloudAuth();
-        } catch (e) {
-            console.error("Firebase 초기화 오류:", e);
-        }
-
-        // 실시간 점수 목록 수신
-        function subscribeToScores() {
-            if (!db) return;
-            const scoresRef = collection(db, 'scores');
-            
-            onSnapshot(scoresRef, (snapshot) => {
-                const scores = [];
-                snapshot.forEach((doc) => {
-                    scores.push({ id: doc.id, ...doc.data() });
-                });
-
-                scores.sort((a, b) => (b.score || 0) - (a.score || 0));
-                renderLeaderboard(scores);
-            }, (error) => {
-                console.error("점수 동기화 오류:", error);
-            });
-        }
-
-        function renderLeaderboard(scores) {
-            const tbody = document.getElementById('leaderboard-tbody');
-            if (!tbody) return;
-
-            if (scores.length === 0) {
-                tbody.innerHTML = `<tr><td colspan="5" class="py-8 text-center text-slate-400">제출된 기록이 없습니다.</td></tr>`;
-                return;
-            }
-
-            tbody.innerHTML = scores.map((s, idx) => {
-                const timeStr = s.createdAt ? new Date(s.createdAt).toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit' }) : '-';
-                return `
-                    <tr class="hover:bg-teal-50/50 transition">
-                        <td class="py-2.5 px-3 text-center font-bold text-slate-600">${idx + 1}</td>
-                        <td class="py-2.5 px-3 font-semibold text-slate-700">${escapeHtml(s.studentId || '-')}</td>
-                        <td class="py-2.5 px-3 font-semibold text-slate-800">${escapeHtml(s.studentName || '익명')}</td>
-                        <td class="py-2.5 px-3 text-right font-extrabold text-teal-600">${s.score || 0}점</td>
-                        <td class="py-2.5 px-3 text-center text-slate-400 text-xs">${timeStr}</td>
-                    </tr>
-                `;
-            }).join('');
-        }
-
-        function escapeHtml(str) {
-            return String(str).replace(/[&<>"']/g, function(m) {
-                return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[m];
-            });
-        }
-
-        // 전역 모달 제어 및 파이어베이스 액션 함수
-        window.openPasswordModal = function() {
-            const pwdInput = document.getElementById('teacher-password-input');
-            const errorMsg = document.getElementById('password-error-msg');
-            if (pwdInput) pwdInput.value = '';
-            if (errorMsg) errorMsg.classList.add('hidden');
-            document.getElementById('password-modal').classList.remove('hidden');
-            setTimeout(() => pwdInput && pwdInput.focus(), 100);
-        };
-
-        window.closePasswordModal = function() {
-            document.getElementById('password-modal').classList.add('hidden');
-        };
-
-        window.verifyTeacherPassword = function() {
-            const pwdInput = document.getElementById('teacher-password-input');
-            const errorMsg = document.getElementById('password-error-msg');
-            
-            // 교사 기본 비밀번호: 1111
-            if (pwdInput && pwdInput.value === '1111') {
-                closePasswordModal();
-                openLeaderboardModal();
-            } else {
-                if (errorMsg) errorMsg.classList.remove('hidden');
-                if (pwdInput) {
-                    pwdInput.value = '';
-                    pwdInput.focus();
-                }
-            }
-        };
-
-        window.openScoreModal = function() {
-            const scoreDisplay = document.getElementById('modal-score-display');
-            const statusEl = document.getElementById('submit-status');
-            const modalEl = document.getElementById('score-modal');
-
-            if (scoreDisplay) scoreDisplay.innerText = window.score || 0;
-            if (statusEl) statusEl.classList.add('hidden');
-            if (modalEl) modalEl.classList.remove('hidden');
-        };
-
-        window.closeScoreModal = function() {
-            document.getElementById('score-modal').classList.add('hidden');
-        };
-
-        window.openLeaderboardModal = function() {
-            document.getElementById('leaderboard-modal').classList.remove('hidden');
-        };
-
-        window.closeLeaderboardModal = function() {
-            document.getElementById('leaderboard-modal').classList.add('hidden');
-        };
-
-        window.openResetConfirmModal = function() {
-            const statusEl = document.getElementById('reset-status');
-            if (statusEl) statusEl.classList.add('hidden');
-            document.getElementById('reset-confirm-modal').classList.remove('hidden');
-        };
-
-        window.closeResetConfirmModal = function() {
-            document.getElementById('reset-confirm-modal').classList.add('hidden');
-        };
-
-        window.resetAllScores = async function() {
-            const statusEl = document.getElementById('reset-status');
-            if (!db) {
-                if (statusEl) {
-                    statusEl.innerText = "⚠️ 클라우드 DB에 연결되어 있지 않습니다.";
-                    statusEl.className = "text-xs font-bold mb-3 text-red-500";
-                    statusEl.classList.remove('hidden');
-                }
-                return;
-            }
-
-            try {
-                if (statusEl) {
-                    statusEl.innerText = "⏳ 전체 기록 삭제 중...";
-                    statusEl.className = "text-xs font-bold mb-3 text-teal-600";
-                    statusEl.classList.remove('hidden');
-                }
-
-                const scoresRef = collection(db, 'scores');
-                const snapshot = await getDocs(scoresRef);
-
-                const deletePromises = [];
-                snapshot.forEach((docSnapshot) => {
-                    deletePromises.push(deleteDoc(doc(db, 'scores', docSnapshot.id)));
-                });
-
-                await Promise.all(deletePromises);
-
-                if (statusEl) {
-                    statusEl.innerText = "✅ 모든 기록이 성공적으로 삭제되었습니다!";
-                    statusEl.className = "text-xs font-bold mb-3 text-green-600";
-                }
-
-                setTimeout(() => {
-                    closeResetConfirmModal();
-                }, 800);
-            } catch (err) {
-                console.error("기록 리셋 실패:", err);
-                if (statusEl) {
-                    statusEl.innerText = "❌ 삭제 처리 중 오류가 발생했습니다. 보안 규칙을 확인해주세요.";
-                    statusEl.className = "text-xs font-bold mb-3 text-red-500";
-                }
-            }
-        };
-
-        window.submitScoreToCloud = async function() {
-            const studentId = document.getElementById('student-id').value.trim();
-            const studentName = document.getElementById('student-name').value.trim();
-            const statusEl = document.getElementById('submit-status');
-
-            if (!studentName) {
-                if (statusEl) {
-                    statusEl.innerText = "⚠️ 이름을 입력해주세요.";
-                    statusEl.className = "text-xs text-center font-bold mb-3 text-red-500";
-                    statusEl.classList.remove('hidden');
-                }
-                return;
-            }
-
-            if (!db) {
-                if (statusEl) {
-                    statusEl.innerText = "⚠️ 클라우드 연결 상태를 확인 중입니다. 잠시 후 다시 시도해주세요.";
-                    statusEl.className = "text-xs text-center font-bold mb-3 text-amber-600";
-                    statusEl.classList.remove('hidden');
-                }
-                return;
-            }
-
-            try {
-                if (statusEl) {
-                    statusEl.innerText = "⏳ 기록 전송 중...";
-                    statusEl.className = "text-xs text-center font-bold mb-3 text-teal-600";
-                    statusEl.classList.remove('hidden');
-                }
-
-                const scoresRef = collection(db, 'scores');
-                await addDoc(scoresRef, {
-                    studentId: studentId,
-                    studentName: studentName,
-                    score: window.score || 0,
-                    userId: currentUser ? currentUser.uid : 'anonymous',
-                    createdAt: Date.now()
-                });
-
-                if (statusEl) {
-                    statusEl.innerText = "✅ 성공적으로 제출되었습니다!";
-                    statusEl.className = "text-xs text-center font-bold mb-3 text-green-600";
-                }
-
-                setTimeout(() => {
-                    closeScoreModal();
-                }, 1000);
-            } catch (err) {
-                console.error("점수 제출 실패:", err);
-                if (statusEl) {
-                    statusEl.innerText = "❌ 제출 중 오류가 발생했습니다. (Firestore 규칙 확인 필요)";
-                    statusEl.className = "text-xs text-center font-bold mb-3 text-red-500";
-                }
-            }
-        };
-    </script>
-
-    <!-- Main Game Logic Script -->
     <script>
-        const TM_MODEL_URL = "https://teachablemachine.withgoogle.com/models/dpHP_RGGy/";
-        let model, webcam, maxPredictions;
-        let modelType = 'pose';
-        let isWebcamRunning = false;
+        // State variables
+        let observerHeight = 1.6;
+        let distance = 20.0;
+        let angle = 35;
+
+        // Escape Room Game State
+        let isEscaped = false;
+        let leftSlidingDoor = null;
+        let rightSlidingDoor = null;
+        let doorInitialXLeft = 0;
+        let doorInitialXRight = 0;
+        let doorSlideProgress = 0;
+
+        // Three.js setup
+        const container = document.getElementById('canvas-container');
+        const scene = new THREE.Scene();
+        scene.background = new THREE.Color(0x87CEEB); 
+        scene.fog = new THREE.FogExp2(0x87CEEB, 0.005);
+
+        // 부모 컨테이너 크기에 맞춰 카메라 초기화 (반응형)
+        const camera = new THREE.PerspectiveCamera(55, container.clientWidth / container.clientHeight, 0.1, 1000);
         
-        let holdTimeMs = 0;
-        const REQUIRED_HOLD_TIME_MS = 2000; 
-        let prepCooldownMs = 0; 
-        const PREP_TIME_MS = 5000; 
-        let lastPredictTime = 0;
+        const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: false });
+        renderer.setSize(container.clientWidth, container.clientHeight);
+        renderer.setPixelRatio(window.devicePixelRatio);
+        renderer.shadowMap.enabled = true;
+        renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+        container.appendChild(renderer.domElement);
 
-        async function initWebcam() {
-            const startBtn = document.getElementById('start-btn');
-            if (startBtn) {
-                startBtn.innerText = "로딩 중...";
-                startBtn.disabled = true;
-            }
+        const controls = new THREE.OrbitControls(camera, renderer.domElement);
+        controls.enableDamping = true;
+        controls.dampingFactor = 0.05;
+        controls.maxPolarAngle = Math.PI / 2 - 0.05; 
+        controls.minDistance = 5;
+        controls.maxDistance = 150;
+        
+        // Lighting
+        const ambientLight = new THREE.AmbientLight(0xffffff, 0.5);
+        scene.add(ambientLight);
 
-            const modelURL = TM_MODEL_URL + "model.json";
-            const metadataURL = TM_MODEL_URL + "metadata.json";
+        const hemiLight = new THREE.HemisphereLight(0xffffff, 0x444444, 0.4);
+        hemiLight.position.set(0, 200, 0);
+        scene.add(hemiLight);
 
-            try {
-                try {
-                    modelType = 'pose';
-                    model = await tmPose.load(modelURL, metadataURL);
-                    maxPredictions = model.getTotalClasses();
-                } catch (poseErr) {
-                    console.warn("Pose 모델 로드 실패, Image 모델로 전환합니다:", poseErr);
-                    modelType = 'image';
-                    model = await tmImage.load(modelURL, metadataURL);
-                    maxPredictions = model.getTotalClasses();
-                }
+        const dirLight = new THREE.DirectionalLight(0xffffff, 0.8);
+        dirLight.position.set(50, 100, 80);
+        dirLight.castShadow = true;
+        dirLight.shadow.mapSize.width = 2048;
+        dirLight.shadow.mapSize.height = 2048;
+        dirLight.shadow.camera.near = 0.5;
+        dirLight.shadow.camera.far = 250;
+        dirLight.shadow.camera.left = -60;
+        dirLight.shadow.camera.right = 60;
+        dirLight.shadow.camera.top = 60;
+        dirLight.shadow.camera.bottom = -60;
+        dirLight.shadow.bias = -0.001;
+        scene.add(dirLight);
 
-                const flip = true; 
-                if (modelType === 'pose') {
-                    webcam = new tmPose.Webcam(200, 200, flip);
-                } else {
-                    webcam = new tmImage.Webcam(200, 200, flip);
-                }
-                
-                await webcam.setup();
-                await webcam.play();
-                
-                const webcamContainer = document.getElementById('webcam-container');
-                if (webcamContainer) {
-                    webcamContainer.innerHTML = '';
-                    webcamContainer.appendChild(webcam.canvas);
-                }
+        // Ground
+        const groundGeo = new THREE.PlaneGeometry(300, 300);
+        const groundMat = new THREE.MeshStandardMaterial({ 
+            color: 0xd2b48c,
+            roughness: 0.9,
+            metalness: 0.05
+        });
+        const ground = new THREE.Mesh(groundGeo, groundMat);
+        ground.rotation.x = -Math.PI / 2;
+        ground.receiveShadow = true;
+        scene.add(ground);
 
-                isWebcamRunning = true;
-                startAILoop();
-            } catch (err) {
-                console.error("웹캠/모델 로드 실패:", err);
-                if (startBtn) {
-                    startBtn.innerText = "▶️ 다시 시도";
-                    startBtn.disabled = false;
-                }
-                const statusEl = document.getElementById('recognition-status');
-                if (statusEl) statusEl.innerText = "모델 연결 실패. 네트워크 상태를 확인해 주세요.";
-            }
+        // Building Materials
+        const mainWallColor = 0x8c8c8c; 
+        const sideWallColor = 0xa0a0a0; 
+        const windowColor = 0x87cefa; 
+        const frameColor = 0xffffff; 
+        const bluePanelColor = 0x1e3a8a; 
+        const yellowStructColor = 0xfacc15; 
+        const roofColor = 0x4a5568; 
+
+        const matWall = new THREE.MeshStandardMaterial({ color: mainWallColor, roughness: 0.8 });
+        const matSideWall = new THREE.MeshStandardMaterial({ color: sideWallColor, roughness: 0.7 });
+        const matWindow = new THREE.MeshStandardMaterial({ color: windowColor, roughness: 0.1, metalness: 0.7 });
+        const matFrame = new THREE.MeshStandardMaterial({ color: frameColor, roughness: 0.5 });
+        const matBluePanel = new THREE.MeshStandardMaterial({ color: bluePanelColor, roughness: 0.4 });
+        const matYellow = new THREE.MeshStandardMaterial({ color: yellowStructColor, roughness: 0.5 });
+        const matRoof = new THREE.MeshStandardMaterial({ color: roofColor, roughness: 0.9 });
+
+        const buildingGroup = new THREE.Group();
+        const bldgWidth = 80;
+        const baseHeight = 18;
+        const bldgDepth = 15;
+        const bldgZ = 0; 
+
+        const leftWingGeo = new THREE.BoxGeometry(25, baseHeight, bldgDepth);
+        const leftWing = new THREE.Mesh(leftWingGeo, matWall);
+        leftWing.position.set(-20, baseHeight/2, bldgZ);
+        leftWing.castShadow = true; leftWing.receiveShadow = true;
+        buildingGroup.add(leftWing);
+
+        const rightWingGeo = new THREE.BoxGeometry(25, baseHeight, bldgDepth);
+        const rightWing = new THREE.Mesh(rightWingGeo, matWall);
+        rightWing.position.set(20, baseHeight/2, bldgZ);
+        rightWing.castShadow = true; rightWing.receiveShadow = true;
+        buildingGroup.add(rightWing);
+
+        const sideBuildingGeo = new THREE.BoxGeometry(10, baseHeight, bldgDepth + 2);
+        const sideBuilding = new THREE.Mesh(sideBuildingGeo, matSideWall);
+        sideBuilding.position.set(-37.5, baseHeight/2, bldgZ + 1);
+        sideBuilding.castShadow = true; sideBuilding.receiveShadow = true;
+        buildingGroup.add(sideBuilding);
+
+        const rightSideBuilding = new THREE.Mesh(sideBuildingGeo, matSideWall);
+        rightSideBuilding.position.set(37.5, baseHeight/2, bldgZ + 1);
+        rightSideBuilding.castShadow = true; rightSideBuilding.receiveShadow = true;
+        buildingGroup.add(rightSideBuilding);
+
+        const centerWidth = 15;
+        const centerHeight = baseHeight + 3;
+        const centerPanelGeo = new THREE.BoxGeometry(centerWidth, centerHeight, bldgDepth + 1);
+        const centerPanel = new THREE.Mesh(centerPanelGeo, matBluePanel);
+        centerPanel.position.set(0, centerHeight/2, bldgZ + 0.5);
+        centerPanel.castShadow = true; centerPanel.receiveShadow = true;
+        buildingGroup.add(centerPanel);
+
+        const mainRoofGeo = new THREE.BoxGeometry(bldgWidth, 1, bldgDepth + 1);
+        const mainRoof = new THREE.Mesh(mainRoofGeo, matRoof);
+        mainRoof.position.set(0, baseHeight + 0.5, bldgZ);
+        buildingGroup.add(mainRoof);
+
+        const sideRoofGeo = new THREE.BoxGeometry(11, 1, bldgDepth + 3);
+        const sideRoof = new THREE.Mesh(sideRoofGeo, matRoof);
+        sideRoof.position.set(-37.5, baseHeight + 0.5, bldgZ + 1);
+        buildingGroup.add(sideRoof);
+
+        const rightSideRoof = new THREE.Mesh(sideRoofGeo, matRoof);
+        rightSideRoof.position.set(37.5, baseHeight + 0.5, bldgZ + 1);
+        buildingGroup.add(rightSideRoof);
+
+        const awningWidth = 18;
+        const awningDepth = 8;
+        const awningGeo = new THREE.BoxGeometry(awningWidth, 2, awningDepth);
+        const awning = new THREE.Mesh(awningGeo, matBluePanel);
+        awning.position.set(0, 5, bldgZ + bldgDepth/2 + awningDepth/2 - 1);
+        awning.castShadow = true;
+        buildingGroup.add(awning);
+
+        const pillarGeo = new THREE.CylinderGeometry(0.5, 0.5, 5, 8);
+        const pillarMat = new THREE.MeshStandardMaterial({color: 0xc19a6b});
+        for(let i=-1; i<=1; i+=2) {
+            const pillar = new THREE.Mesh(pillarGeo, pillarMat);
+            pillar.position.set(i * (awningWidth/2 - 1), 2.5, bldgZ + bldgDepth/2 + awningDepth - 2);
+            pillar.castShadow = true;
+            buildingGroup.add(pillar);
         }
 
-        let aiTimer = null;
-        function startAILoop() {
-            if (aiTimer) clearTimeout(aiTimer);
+        const entranceGroup = new THREE.Group();
+        const porchGeo = new THREE.BoxGeometry(14, 0.4, 4);
+        const porchMat = new THREE.MeshStandardMaterial({ color: 0x94a3b8, roughness: 0.6 });
+        const porch = new THREE.Mesh(porchGeo, porchMat);
+        porch.position.set(0, 0.2, bldgZ + bldgDepth/2 + 1.5);
+        porch.receiveShadow = true;
+        entranceGroup.add(porch);
+
+        const stepGeo = new THREE.BoxGeometry(15, 0.2, 1);
+        const step = new THREE.Mesh(stepGeo, porchMat);
+        step.position.set(0, 0.1, bldgZ + bldgDepth/2 + 3.6);
+        step.receiveShadow = true;
+        entranceGroup.add(step);
+
+        const doorFrameMat = new THREE.MeshStandardMaterial({ color: 0x1e293b, roughness: 0.3 });
+        const doorGlassMat = new THREE.MeshStandardMaterial({ color: 0x93c5fd, roughness: 0.1, metalness: 0.8, transparent: true, opacity: 0.85 });
+        const handleMat = new THREE.MeshStandardMaterial({ color: 0xe2e8f0, metalness: 0.9, roughness: 0.2 });
+
+        const doorWallGeo = new THREE.BoxGeometry(12, 3.2, 0.2);
+        const doorWallFrame = new THREE.Mesh(doorWallGeo, doorFrameMat);
+        doorWallFrame.position.set(0, 1.8, bldgZ + bldgDepth/2 + 0.1);
+        entranceGroup.add(doorWallFrame);
+
+        const totalDoors = 4;
+        const doorWidth = 2.4;
+        const doorHeight = 2.8;
+        const startX = -((totalDoors - 1) * (doorWidth + 0.2)) / 2;
+
+        function createDoorTexture(isLeft) {
+            const canvas = document.createElement('canvas');
+            canvas.width = 128;
+            canvas.height = 256;
+            const ctx = canvas.getContext('2d');
             
-            async function loop() {
-                if (!isWebcamRunning) return;
-                
-                if (webcam) {
-                    webcam.update();
-                    const now = performance.now();
-                    const deltaMs = lastPredictTime ? (now - lastPredictTime) : 150;
-                    lastPredictTime = now;
-                    await predict(deltaMs);
-                }
-                
-                aiTimer = setTimeout(loop, 150);
-            }
-            loop();
+            const gradient = ctx.createLinearGradient(0, 0, 128, 256);
+            gradient.addColorStop(0, '#93c5fd');
+            gradient.addColorStop(1, '#3b82f6');
+            ctx.fillStyle = gradient;
+            ctx.fillRect(0, 0, 128, 256);
+            
+            ctx.strokeStyle = '#1e293b';
+            ctx.lineWidth = 12;
+            ctx.strokeRect(0, 0, 128, 256);
+            
+            if (isLeft) ctx.strokeRect(128 - 6, 0, 6, 256);
+            else ctx.strokeRect(0, 0, 6, 256);
+
+            return new THREE.CanvasTexture(canvas);
         }
 
-        const lastDOMValues = { probs: [-1, -1, -1] };
+        const leftDoorTex = createDoorTexture(true);
+        const rightDoorTex = createDoorTexture(false);
+        const matLeftDoor = new THREE.MeshStandardMaterial({ map: leftDoorTex, metalness: 0.3, roughness: 0.4, transparent: true, opacity: 0.95 });
+        const matRightDoor = new THREE.MeshStandardMaterial({ map: rightDoorTex, metalness: 0.3, roughness: 0.4, transparent: true, opacity: 0.95 });
 
-        async function predict(deltaMs = 150) {
-            if (!model || !webcam) return;
+        for (let i = 0; i < totalDoors; i++) {
+            const dx = startX + i * (doorWidth + 0.2);
+            const doorGroup = new THREE.Group();
+            
+            let currentDoorMat = doorGlassMat;
+            if (i === 1) currentDoorMat = matLeftDoor;
+            else if (i === 2) currentDoorMat = matRightDoor;
 
-            let prediction;
-            try {
-                if (modelType === 'pose') {
-                    const { pose, posenetOutput } = await model.estimatePose(webcam.canvas);
-                    prediction = await model.predict(posenetOutput);
-                } else {
-                    prediction = await model.predict(webcam.canvas);
+            const glass = new THREE.Mesh(new THREE.PlaneGeometry(doorWidth - 0.1, doorHeight - 0.1), currentDoorMat);
+            glass.position.set(0, 0, 0.02);
+            doorGroup.add(glass);
+
+            const frameBorder = new THREE.Mesh(new THREE.BoxGeometry(doorWidth, doorHeight, 0.08), doorFrameMat);
+            doorGroup.add(frameBorder);
+
+            const handleX = (i % 2 === 0) ? doorWidth / 2 - 0.3 : -doorWidth / 2 + 0.3;
+            const handle = new THREE.Mesh(new THREE.CylinderGeometry(0.03, 0.03, 0.8, 8), handleMat);
+            handle.position.set(handleX, -0.2, 0.08);
+            doorGroup.add(handle);
+
+            doorGroup.position.set(dx, 1.8, bldgZ + bldgDepth/2 + 0.2);
+            entranceGroup.add(doorGroup);
+
+            if (i === 1) {
+                leftSlidingDoor = doorGroup;
+                doorInitialXLeft = dx;
+            } else if (i === 2) {
+                rightSlidingDoor = doorGroup;
+                doorInitialXRight = dx;
+            }
+        }
+        buildingGroup.add(entranceGroup);
+
+        function createTruss(xOffset, yOffset, scaleX, scaleY) {
+            const trussGroup = new THREE.Group();
+            const beamThickness = 0.6;
+            const mat = matYellow;
+
+            const hBeamGeo = new THREE.BoxGeometry(10 * scaleX, beamThickness, beamThickness);
+            const vBeamGeo = new THREE.BoxGeometry(beamThickness, 6 * scaleY, beamThickness);
+            
+            const bottomBeam = new THREE.Mesh(hBeamGeo, mat);
+            trussGroup.add(bottomBeam);
+            const topBeam = new THREE.Mesh(hBeamGeo, mat);
+            topBeam.position.y = 6 * scaleY;
+            trussGroup.add(topBeam);
+            const leftBeam = new THREE.Mesh(vBeamGeo, mat);
+            leftBeam.position.set(-5 * scaleX, 3 * scaleY, 0);
+            trussGroup.add(leftBeam);
+            const rightBeam = new THREE.Mesh(vBeamGeo, mat);
+            rightBeam.position.set(5 * scaleX, 3 * scaleY, 0);
+            trussGroup.add(rightBeam);
+
+            const diagLength = Math.sqrt(Math.pow(10*scaleX, 2) + Math.pow(6*scaleY, 2));
+            const diagAngle = Math.atan2(6*scaleY, 10*scaleX);
+            const diagBeamGeo = new THREE.BoxGeometry(diagLength, beamThickness, beamThickness);
+            
+            const diag1 = new THREE.Mesh(diagBeamGeo, mat);
+            diag1.position.set(0, 3*scaleY, 0);
+            diag1.rotation.z = diagAngle;
+            trussGroup.add(diag1);
+
+            const diag2 = new THREE.Mesh(diagBeamGeo, mat);
+            diag2.position.set(0, 3*scaleY, 0);
+            diag2.rotation.z = -diagAngle;
+            trussGroup.add(diag2);
+
+            trussGroup.position.set(xOffset, yOffset, bldgZ + bldgDepth/2 + 0.5);
+            return trussGroup;
+        }
+
+        buildingGroup.add(createTruss(-16.9, 2, 0.85, 0.8));
+        buildingGroup.add(createTruss(-16.9, 6.8, 0.85, 0.8));
+        buildingGroup.add(createTruss(16.9, 2, 0.85, 0.8));
+        buildingGroup.add(createTruss(16.9, 6.8, 0.85, 0.8));
+
+        function createMultiPaneWindow(width, height) {
+            const winGroup = new THREE.Group();
+            const frameThickness = 0.12;
+            const casingMat = matFrame;
+            
+            const glassMesh = new THREE.Mesh(new THREE.PlaneGeometry(width, height), matWindow);
+            winGroup.add(glassMesh);
+
+            const topFrame = new THREE.Mesh(new THREE.BoxGeometry(width + 0.1, frameThickness, 0.1), casingMat);
+            topFrame.position.y = height / 2; winGroup.add(topFrame);
+            const bottomFrame = new THREE.Mesh(new THREE.BoxGeometry(width + 0.1, frameThickness, 0.1), casingMat);
+            bottomFrame.position.y = -height / 2; winGroup.add(bottomFrame);
+            const leftFrame = new THREE.Mesh(new THREE.BoxGeometry(frameThickness, height, 0.1), casingMat);
+            leftFrame.position.x = -width / 2; winGroup.add(leftFrame);
+            const rightFrame = new THREE.Mesh(new THREE.BoxGeometry(frameThickness, height, 0.1), casingMat);
+            rightFrame.position.x = width / 2; winGroup.add(rightFrame);
+
+            const hMullion = new THREE.Mesh(new THREE.BoxGeometry(width, 0.06, 0.08), casingMat);
+            hMullion.position.y = 0.1; winGroup.add(hMullion);
+
+            for(let i=1; i<=3; i++) {
+                const vMullion = new THREE.Mesh(new THREE.BoxGeometry(0.06, height, 0.08), casingMat);
+                vMullion.position.x = -width/2 + (width/4)*i;
+                winGroup.add(vMullion);
+            }
+            return winGroup;
+        }
+
+        function createWindows(group, startX, startY, floors, cols, spacingX, spacingY, zPos, winWidth = 3.2, winHeight = 2.0) {
+            for(let f = 0; f < floors; f++) {
+                for(let c = 0; c < cols; c++) {
+                    const windowInst = createMultiPaneWindow(winWidth, winHeight);
+                    windowInst.position.set(startX + c * spacingX, startY + f * spacingY, zPos);
+                    group.add(windowInst);
                 }
-            } catch (err) {
-                console.error("예측 과정 오류:", err);
+            }
+        }
+
+        createWindows(buildingGroup, -28.5, 4.0, 4, 4, 5.8, 3.4, bldgZ + bldgDepth/2 + 0.08, 4.2, 2.1);
+        createWindows(buildingGroup, 11.1, 4.0, 4, 4, 5.8, 3.4, bldgZ + bldgDepth/2 + 0.08, 4.2, 2.1);
+        createWindows(buildingGroup, -40, 4.0, 4, 2, 4.2, 3.4, bldgZ + 1 + (bldgDepth+2)/2 + 0.08, 3.2, 2.1);
+        createWindows(buildingGroup, 35.8, 4.0, 4, 2, 4.2, 3.4, bldgZ + 1 + (bldgDepth+2)/2 + 0.08, 3.2, 2.1);
+        createWindows(buildingGroup, -3.8, 7.8, 3, 2, 7.6, 3.2, bldgZ + 0.5 + (bldgDepth+1)/2 + 0.08, 3.2, 1.9);
+        
+        function createKoreanTextSprite(text, fontSize = 60) {
+            const canvas = document.createElement('canvas');
+            const context = canvas.getContext('2d');
+            canvas.width = 512; canvas.height = 128;
+            context.font = `bold ${fontSize}px sans-serif`;
+            context.textAlign = 'center'; context.textBaseline = 'middle';
+            context.fillStyle = '#ffffff'; 
+            context.fillText(text, canvas.width / 2, canvas.height / 2 - 10);
+            context.font = `bold ${fontSize * 0.4}px sans-serif`;
+            context.fillText("Haan Middle School", canvas.width / 2, canvas.height / 2 + 30);
+            const texture = new THREE.CanvasTexture(canvas);
+            texture.minFilter = THREE.LinearFilter;
+            const material = new THREE.MeshBasicMaterial({ map: texture, transparent: true, depthWrite: false });
+            return new THREE.Mesh(new THREE.PlaneGeometry(16, 4), material);
+        }
+
+        const signSprite = createKoreanTextSprite("하안중학교");
+        signSprite.position.set(0, centerHeight - 2, bldgZ + 0.5 + (bldgDepth+1)/2 + 0.1); 
+        buildingGroup.add(signSprite);
+        scene.add(buildingGroup);
+
+        const visualGroup = new THREE.Group();
+        scene.add(visualGroup);
+
+        const observerGroup = new THREE.Group();
+        const matSkin = new THREE.MeshStandardMaterial({ color: 0xffdbac, roughness: 0.6 });
+        const matHair = new THREE.MeshStandardMaterial({ color: 0x2c1d11, roughness: 0.9 });
+        const matShirt = new THREE.MeshStandardMaterial({ color: 0x3182ce, roughness: 0.7 });
+        const matPants = new THREE.MeshStandardMaterial({ color: 0x2d3748, roughness: 0.8 });
+        const matShoes = new THREE.MeshStandardMaterial({ color: 0x1a202c, roughness: 0.5 });
+        const matClinometer = new THREE.MeshStandardMaterial({ color: 0xe53e3e, roughness: 0.4 });
+
+        const shoeGeo = new THREE.BoxGeometry(0.14, 0.08, 0.24);
+        const leftShoe = new THREE.Mesh(shoeGeo, matShoes); leftShoe.position.set(-0.12, 0.04, 0.02); leftShoe.castShadow = true; observerGroup.add(leftShoe);
+        const rightShoe = new THREE.Mesh(shoeGeo, matShoes); rightShoe.position.set(0.12, 0.04, 0.02); rightShoe.castShadow = true; observerGroup.add(rightShoe);
+
+        const legGeo = new THREE.CylinderGeometry(0.07, 0.06, 0.65, 12);
+        const leftLeg = new THREE.Mesh(legGeo, matPants); leftLeg.position.set(-0.12, 0.40, 0); leftLeg.castShadow = true; observerGroup.add(leftLeg);
+        const rightLeg = new THREE.Mesh(legGeo, matPants); rightLeg.position.set(0.12, 0.40, 0); rightLeg.castShadow = true; observerGroup.add(rightLeg);
+
+        const torsoMesh = new THREE.Mesh(new THREE.BoxGeometry(0.38, 0.52, 0.22), matShirt); torsoMesh.position.set(0, 0.98, 0); torsoMesh.castShadow = true; observerGroup.add(torsoMesh);
+        const neckMesh = new THREE.Mesh(new THREE.CylinderGeometry(0.05, 0.06, 0.08, 12), matSkin); neckMesh.position.set(0, 1.28, 0); observerGroup.add(neckMesh);
+        const headMesh = new THREE.Mesh(new THREE.SphereGeometry(0.13, 16, 16), matSkin); headMesh.position.set(0, 1.40, 0); headMesh.castShadow = true; observerGroup.add(headMesh);
+
+        const hairGroup = new THREE.Group();
+        const mainHair = new THREE.Mesh(new THREE.SphereGeometry(0.138, 16, 16, 0, Math.PI * 2, 0, Math.PI * 0.6), matHair); mainHair.rotation.x = -0.2; hairGroup.add(mainHair);
+        const frontBangs = new THREE.Mesh(new THREE.BoxGeometry(0.14, 0.06, 0.08), matHair); frontBangs.position.set(0, 0.06, -0.09); frontBangs.rotation.x = 0.2; hairGroup.add(frontBangs);
+        hairGroup.position.set(0, 1.42, 0); observerGroup.add(hairGroup);
+
+        const armGeo = new THREE.CylinderGeometry(0.045, 0.04, 0.45, 12);
+        const leftArm = new THREE.Mesh(armGeo, matShirt); leftArm.position.set(-0.24, 0.98, 0); leftArm.rotation.z = 0.15; leftArm.castShadow = true; observerGroup.add(leftArm);
+        const leftHand = new THREE.Mesh(new THREE.SphereGeometry(0.04, 8, 8), matSkin); leftHand.position.set(-0.27, 0.73, 0); observerGroup.add(leftHand);
+
+        const rightUpperArm = new THREE.Mesh(armGeo, matShirt); rightUpperArm.position.set(0.22, 1.05, -0.08); rightUpperArm.rotation.x = -1.2; rightUpperArm.rotation.z = -0.2; rightUpperArm.castShadow = true; observerGroup.add(rightUpperArm);
+        const rightHand = new THREE.Mesh(new THREE.SphereGeometry(0.04, 8, 8), matSkin); rightHand.position.set(0.18, 1.25, -0.22); observerGroup.add(rightHand);
+
+        const clinometer = new THREE.Mesh(new THREE.CylinderGeometry(0.08, 0.08, 0.02, 16, 1, false, 0, Math.PI), matClinometer);
+        clinometer.rotation.set(Math.PI / 2, 0, Math.PI / 2); clinometer.position.set(0.12, 1.38, -0.25); observerGroup.add(clinometer);
+
+        scene.add(observerGroup);
+
+        const sightLine = new THREE.Line(new THREE.BufferGeometry(), new THREE.LineBasicMaterial({ color: 0xe53e3e, linewidth: 3 }));
+        const horizontalLine = new THREE.Line(new THREE.BufferGeometry(), new THREE.LineDashedMaterial({ color: 0x4a5568, linewidth: 2, dashSize: 0.5, gapSize: 0.3 }));
+        const h1Line = new THREE.Line(new THREE.BufferGeometry(), new THREE.LineBasicMaterial({ color: 0x3182ce, linewidth: 3 }));
+        const h2Line = new THREE.Line(new THREE.BufferGeometry(), new THREE.LineBasicMaterial({ color: 0x3182ce, linewidth: 3 }));
+        const distLine = new THREE.Line(new THREE.BufferGeometry(), new THREE.LineBasicMaterial({ color: 0x38a169, linewidth: 3 }));
+        const arcLine = new THREE.Line(new THREE.BufferGeometry(), new THREE.LineBasicMaterial({ color: 0xe53e3e }));
+        
+        visualGroup.add(sightLine); visualGroup.add(horizontalLine); visualGroup.add(h1Line); 
+        visualGroup.add(h2Line); visualGroup.add(distLine); visualGroup.add(arcLine);
+
+        const bldgFrontZ = bldgZ + bldgDepth/2;
+        
+        const lockGroup = new THREE.Group();
+        const bodyGeo = new THREE.BoxGeometry(2, 1.5, 0.8);
+        const bodyMat = new THREE.MeshStandardMaterial({ color: 0xffd700, metalness: 0.8, roughness: 0.3 });
+        const lockBody = new THREE.Mesh(bodyGeo, bodyMat);
+        lockGroup.add(lockBody);
+        
+        const keyholeGeo = new THREE.CylinderGeometry(0.15, 0.15, 0.85, 16);
+        const keyholeMat = new THREE.MeshBasicMaterial({ color: 0x111111 });
+        const keyholeTop = new THREE.Mesh(keyholeGeo, keyholeMat);
+        keyholeTop.rotation.x = Math.PI / 2; keyholeTop.position.set(0, 0.1, 0);
+        lockGroup.add(keyholeTop);
+        
+        const keyholeBottomGeo = new THREE.BoxGeometry(0.15, 0.4, 0.85);
+        const keyholeBottom = new THREE.Mesh(keyholeBottomGeo, keyholeMat);
+        keyholeBottom.position.set(0, -0.2, 0);
+        lockGroup.add(keyholeBottom);
+
+        const shackleGeo = new THREE.TorusGeometry(0.7, 0.15, 16, 32, Math.PI);
+        const shackleMat = new THREE.MeshStandardMaterial({ color: 0xcccccc, metalness: 0.9, roughness: 0.2 });
+        const shackle = new THREE.Mesh(shackleGeo, shackleMat); shackle.position.set(0, 0.75, 0);
+        
+        const shackleLegGeo = new THREE.CylinderGeometry(0.15, 0.15, 0.5);
+        const leftLegLock = new THREE.Mesh(shackleLegGeo, shackleMat); leftLegLock.position.set(-0.7, 0.5, 0);
+        const rightLegLock = new THREE.Mesh(shackleLegGeo, shackleMat); rightLegLock.position.set(0.7, 0.5, 0);
+        
+        const shackleGroup = new THREE.Group();
+        shackleGroup.add(shackle); shackleGroup.add(leftLegLock); shackleGroup.add(rightLegLock);
+        lockGroup.add(shackleGroup);
+        
+        lockGroup.position.set(0, 1.8, bldgFrontZ + 0.3);
+        lockGroup.scale.set(1.5, 1.5, 1.5);
+        scene.add(lockGroup);
+
+        let unlockAnimationProgress = 0;
+
+        function updateVisuals() {
+            const scaleFactor = observerHeight / 1.40; 
+            observerGroup.scale.set(scaleFactor, scaleFactor, scaleFactor);
+            
+            const obsZ = bldgFrontZ + distance;
+            observerGroup.position.set(0, 0, obsZ);
+
+            const eyePos = new THREE.Vector3(0, observerHeight, obsZ);
+            const angleRad = THREE.MathUtils.degToRad(angle);
+            const calculatedH2 = distance * Math.tan(angleRad);
+            const hitPointY = observerHeight + calculatedH2;
+            
+            const targetPos = new THREE.Vector3(0, hitPointY, bldgFrontZ);
+            const horizTargetPos = new THREE.Vector3(0, observerHeight, bldgFrontZ);
+
+            sightLine.geometry.setFromPoints([eyePos, targetPos]);
+            horizontalLine.geometry.setFromPoints([eyePos, horizTargetPos]);
+            horizontalLine.computeLineDistances();
+
+            h1Line.geometry.setFromPoints([new THREE.Vector3(0, 0, bldgFrontZ + 0.1), new THREE.Vector3(0, observerHeight, bldgFrontZ + 0.1)]);
+            h2Line.geometry.setFromPoints([new THREE.Vector3(0, observerHeight, bldgFrontZ + 0.1), new THREE.Vector3(0, hitPointY, bldgFrontZ + 0.1)]);
+            distLine.geometry.setFromPoints([new THREE.Vector3(0, 0.1, obsZ), new THREE.Vector3(0, 0.1, bldgFrontZ)]);
+
+            const arcRadius = Math.min(distance * 0.2, 3);
+            const arcPoints = [];
+            for (let i = 0; i <= angle; i++) {
+                const a = THREE.MathUtils.degToRad(i);
+                arcPoints.push(new THREE.Vector3(0, observerHeight + Math.sin(a) * arcRadius, obsZ - Math.cos(a) * arcRadius));
+            }
+            arcLine.geometry.setFromPoints(arcPoints);
+
+            const elHeight = document.getElementById('val-height');
+            if (elHeight) elHeight.innerText = observerHeight.toFixed(2) + ' m';
+            
+            const elDist = document.getElementById('val-distance');
+            if (elDist) elDist.innerText = distance.toFixed(1) + ' m';
+            
+            const elAngle = document.getElementById('val-angle');
+            if (elAngle) elAngle.innerText = angle + '°';
+        }
+
+        function getMaxAngleDeg() {
+            const BUILDING_MAX_HEIGHT = 21.0; 
+            const maxH2 = BUILDING_MAX_HEIGHT - observerHeight;
+            const maxAngleRad = Math.atan(maxH2 / distance);
+            return Math.floor(THREE.MathUtils.radToDeg(maxAngleRad));
+        }
+
+        function updateMaxAngle() {
+            const maxAngleDeg = getMaxAngleDeg();
+            const sliderAngle = document.getElementById('slider-angle');
+            if (sliderAngle) {
+                sliderAngle.max = maxAngleDeg;
+                if (angle > maxAngleDeg) {
+                    angle = maxAngleDeg;
+                    sliderAngle.value = angle;
+                }
+            }
+        }
+
+        window.addEventListener('DOMContentLoaded', () => {
+            const sliderHeight = document.getElementById('slider-height');
+            if (sliderHeight) {
+                sliderHeight.value = (1.5 + Math.random() * 0.4).toFixed(2);
+                sliderHeight.dispatchEvent(new Event('input'));
+            }
+            
+            const sliderDist = document.getElementById('slider-distance');
+            if (sliderDist) {
+                sliderDist.value = (15 + Math.random() * 20).toFixed(1);
+                sliderDist.dispatchEvent(new Event('input'));
+            }
+            
+            updateMaxAngle();
+            
+            const sliderAngle = document.getElementById('slider-angle');
+            if (sliderAngle) {
+                const maxAngleDeg = getMaxAngleDeg();
+                const minAngle = 10;
+                const randomAngle = Math.floor(minAngle + Math.random() * Math.max(1, (maxAngleDeg - minAngle - 5)));
+                
+                sliderAngle.value = randomAngle;
+                sliderAngle.dispatchEvent(new Event('input'));
+            }
+        });
+
+        function generateTrigTable() {
+            let html = '<table class="trig-table">';
+            html += '<thead><tr><th>각도(θ)</th><th>sin(θ)</th><th>cos(θ)</th><th>tan(θ)</th></tr></thead>';
+            html += '<tbody>';
+            for (let i = 0; i <= 90; i++) {
+                const rad = i * Math.PI / 180;
+                const sin = Math.sin(rad).toFixed(4);
+                const cos = Math.cos(rad).toFixed(4);
+                const tan = i === 90 ? '∞' : Math.tan(rad).toFixed(4);
+                
+                const isCurrentAngle = (i === angle);
+                const highlightStyle = isCurrentAngle ? 'style="background-color: #bfdbfe;"' : '';
+                const textStyle = isCurrentAngle ? 'font-bold text-blue-800' : 'text-slate-600';
+                
+                html += `<tr id="trig-row-${i}" ${highlightStyle}>
+                    <td class="font-bold text-slate-700">${i}°</td>
+                    <td class="${textStyle}">${sin}</td>
+                    <td class="${textStyle}">${cos}</td>
+                    <td class="${textStyle} ${isCurrentAngle ? '' : 'font-medium'}">${tan}</td>
+                </tr>`;
+            }
+            html += '</tbody></table>';
+            document.getElementById('trig-body').innerHTML = html;
+        }
+
+        document.getElementById('trig-btn').addEventListener('click', () => {
+            generateTrigTable();
+            const modal = document.getElementById('trig-modal');
+            modal.style.display = 'flex';
+            setTimeout(() => {
+                const row = document.getElementById(`trig-row-${angle}`);
+                if (row) row.scrollIntoView({ behavior: 'auto', block: 'center' });
+            }, 10);
+        });
+
+        document.getElementById('trig-close').addEventListener('click', () => {
+            document.getElementById('trig-modal').style.display = 'none';
+        });
+        
+        document.getElementById('trig-modal').addEventListener('click', (e) => {
+            if (e.target.id === 'trig-modal') e.target.style.display = 'none';
+        });
+
+        document.getElementById('slider-height').addEventListener('input', (e) => {
+            observerHeight = parseFloat(e.target.value);
+            updateMaxAngle(); updateVisuals();
+        });
+
+        document.getElementById('slider-distance').addEventListener('input', (e) => {
+            distance = parseFloat(e.target.value);
+            updateMaxAngle(); updateVisuals();
+        });
+
+        document.getElementById('slider-angle').addEventListener('input', (e) => {
+            angle = parseInt(e.target.value);
+            updateVisuals();
+        });
+
+        document.getElementById('btn-submit').addEventListener('click', () => {
+            const inputVal = parseFloat(document.getElementById('user-answer').value);
+            if (isNaN(inputVal)) {
+                showMessage("오류", "숫자 형태의 값을 입력해주세요!");
                 return;
             }
-            
-            let maxProb = 0;
-            let bestIndex = 0;
 
-            for (let i = 0; i < maxPredictions; i++) {
-                const probValue = prediction[i].probability;
-                const roundedProb = Math.round(probValue * 100);
-
-                if (lastDOMValues.probs[i] !== roundedProb) {
-                    lastDOMValues.probs[i] = roundedProb;
-                    const barEl = document.getElementById(`bar-${i}`);
-                    const probEl = document.getElementById(`prob-${i}`);
-                    if (barEl) barEl.style.width = roundedProb + "%";
-                    if (probEl) probEl.innerText = probValue.toFixed(2);
-                }
-
-                if (probValue > maxProb) {
-                    maxProb = probValue;
-                    bestIndex = i;
-                }
+            const maxAngleDeg = getMaxAngleDeg();
+            if (angle < maxAngleDeg) {
+                showMessage("각도 설정 필요!", `올려다보는 각도를 건물 꼭대기(최대 각도: <b>${maxAngleDeg}°</b>)로 설정한 후 높이를 계산해 주세요!`);
+                return;
             }
 
-            const statusEl = document.getElementById('recognition-status');
-            const gaugeContainer = document.getElementById('hold-gauge-container');
-            const gaugeBar = document.getElementById('hold-gauge-bar');
+            const correctH2 = distance * Math.tan(THREE.MathUtils.degToRad(maxAngleDeg));
+            const correctTotal = observerHeight + correctH2;
 
-            if (gameState === 'waiting') {
-                if (prepCooldownMs > 0) {
-                    prepCooldownMs -= deltaMs;
-                    const secondsLeft = Math.max(1, Math.ceil(prepCooldownMs / 1000));
-                    if (statusEl) {
-                        statusEl.innerText = `⏳ 준비 중... (${secondsLeft}초 후 자세 인식 시작)`;
-                        statusEl.className = "w-full font-bold text-center text-xs md:text-sm p-2 rounded bg-amber-100 text-amber-800 border border-amber-200";
-                    }
-                    if (gaugeContainer) gaugeContainer.classList.add('hidden');
-                    holdTimeMs = 0;
-                    return;
-                }
-
-                if (maxProb > 0.80) {
-                    const optIndex = bestIndex;
-                    const optValue = currentProblem ? currentProblem.options[optIndex] : "";
-                    
-                    holdTimeMs += deltaMs;
-                    const progressPercent = Math.min(100, Math.round((holdTimeMs / REQUIRED_HOLD_TIME_MS) * 100));
-
-                    if (statusEl) {
-                        statusEl.innerText = `현재 인식: [ ${optIndex + 1}번 보기 (${optValue}m) ] (${progressPercent}%)`;
-                        statusEl.className = "w-full font-bold text-center text-xs md:text-sm p-2 rounded transition-colors bg-teal-100 text-teal-800 border border-teal-300";
-                    }
-
-                    if (gaugeContainer) {
-                        gaugeContainer.classList.remove('hidden');
-                        if (gaugeBar) gaugeBar.style.width = `${progressPercent}%`;
-                    }
-
-                    if (holdTimeMs >= REQUIRED_HOLD_TIME_MS) {
-                        triggerShoot(optIndex);
-                        holdTimeMs = 0;
-                        if (gaugeContainer) gaugeContainer.classList.add('hidden');
-                        if (statusEl) {
-                            statusEl.innerText = "🏀 슛 발사!";
-                            statusEl.className = "w-full font-bold text-center text-xs md:text-sm p-2 rounded bg-teal-600 text-white";
-                        }
-                    }
-                } else {
-                    holdTimeMs = 0;
-                    if (gaugeContainer) gaugeContainer.classList.add('hidden');
-                    if (statusEl) {
-                        statusEl.innerText = "보기(①, ②, ③)에 맞는 자세를 취해주세요.";
-                        statusEl.className = "w-full text-slate-500 font-bold text-center text-xs md:text-sm p-2 rounded bg-slate-50 transition-colors";
-                    }
-                }
+            if (Math.abs(correctTotal - inputVal) <= 0.1) {
+                isEscaped = true;
+                setTimeout(() => { document.getElementById('success-overlay').style.display = 'flex'; }, 2500);
             } else {
-                holdTimeMs = 0;
-                if (gaugeContainer) gaugeContainer.classList.add('hidden');
+                showMessage("틀렸습니다!", `최대 각도(${maxAngleDeg}°)일 때 삼각비표를 이용해 다시 계산해 보세요.<br>입력값: <b>${inputVal.toFixed(2)}m</b>`);
             }
+        });
+
+        function showMessage(title, sub) {
+            const msgBox = document.getElementById('message-box');
+            msgBox.innerHTML = `${title}<br><span class="text-sm font-normal mt-2 block text-gray-300">${sub}</span>`;
+            msgBox.style.display = 'block';
+            setTimeout(() => { msgBox.style.display = 'none'; }, 3500);
+        }
+        
+        document.getElementById('btn-next-stage').addEventListener('click', () => {
+            alert("다음 단계로 이동합니다! (현재 파일에는 1단계만 포함되어 있습니다)");
+        });
+
+        // 부모 컨테이너 기준 사이즈 측정 (반응형 대응)
+        function resizeCanvas() {
+            const width = container.clientWidth;
+            const height = container.clientHeight;
+            camera.aspect = width / height;
+            camera.updateProjectionMatrix();
+            renderer.setSize(width, height);
         }
 
-        const rawProblemPool = [
-            { base: 3, angle: 30, correctValue: '√3', distractors: [3, 4] },
-            { base: 6, angle: 30, correctValue: '2√3', distractors: [2, 5] },
-            { base: 9, angle: 30, correctValue: '3√3', distractors: [3, 4] },
-            { base: 12, angle: 30, correctValue: '4√3', distractors: [5, 8] },
+        window.addEventListener('resize', resizeCanvas);
 
-            { base: 3, angle: 45, correctValue: 3, distractors: [2, 4] },
-            { base: 4, angle: 45, correctValue: 4, distractors: [5, 6] },
-            { base: 5, angle: 45, correctValue: 5, distractors: [3, 4] },
-            { base: 6, angle: 45, correctValue: 6, distractors: [4, 5] },
+        camera.position.set(-25, 10, 45);
+        controls.target.set(0, 8, 15);
+        controls.update();
 
-            { base: 2, angle: 60, correctValue: '2√3', distractors: [4, 5] },
-            { base: 3, angle: 60, correctValue: '3√3', distractors: [4, 6] },
-            { base: 4, angle: 60, correctValue: '4√3', distractors: [5, 6] },
-            { base: 5, angle: 60, correctValue: '5√3', distractors: [6, 7] }
-        ];
+        function animate() {
+            requestAnimationFrame(animate);
 
-        function parseOptionValue(opt) {
-            if (typeof opt === 'number') return opt;
-            if (typeof opt === 'string') {
-                if (opt === '√3') return Math.sqrt(3);
-                if (opt.includes('√3')) {
-                    const mult = opt.replace('√3', '');
-                    return parseInt(mult) * Math.sqrt(3);
-                }
-            }
-            return parseFloat(opt);
-        }
-
-        let currentProblem = null;
-        window.score = 0;
-        let gameState = 'waiting'; 
-        let selectedOptionIndex = -1;
-        let lastCorrectIndex = -1;
-
-        let canvas, ctx;
-        const width = 800;
-        const height = 600;
-
-        let SCALE_X = 50; 
-        let SCALE_Y = 50;
-        const FLOOR_Y = 480; 
-        const EYE_LEVEL_Y = FLOOR_Y - 130; 
-        let CHARACTER_X = 90; 
-        let GOAL_X = 580;
-
-        function updateScaleAndGoal() {
-            if (!currentProblem) return;
-
-            const maxOptionMeters = Math.max(...currentProblem.options.map(parseOptionValue));
-            
-            const availX = width - CHARACTER_X - 120; 
-            const availY = EYE_LEVEL_Y - 70; 
-
-            const scaleX = availX / currentProblem.base;
-            const scaleY = availY / maxOptionMeters;
-
-            const UNIFIED_SCALE = Math.min(scaleX, scaleY);
-            SCALE_X = UNIFIED_SCALE;
-            SCALE_Y = UNIFIED_SCALE;
-
-            CHARACTER_X = 90;
-            const sceneWidth = currentProblem.base * UNIFIED_SCALE;
-            GOAL_X = CHARACTER_X + sceneWidth;
-        }
-
-        function nextProblem() {
-            const popup = document.getElementById('result-popup');
-            if (popup) popup.classList.add('hidden');
-
-            let candidateProblem = null;
-            let sortedOptions = [];
-            let correctIdx = -1;
-
-            let attempts = 0;
-            while (attempts < 50) {
-                attempts++;
-                const randomIndex = Math.floor(Math.random() * rawProblemPool.length);
-                const rawProb = rawProblemPool[randomIndex];
-
-                const allOptions = [rawProb.correctValue, ...rawProb.distractors];
-                allOptions.sort((a, b) => parseOptionValue(a) - parseOptionValue(b));
-
-                correctIdx = allOptions.indexOf(rawProb.correctValue);
-
-                if (correctIdx !== lastCorrectIndex || attempts >= 45) {
-                    candidateProblem = rawProb;
-                    sortedOptions = allOptions;
-                    break;
+            if (isEscaped) {
+                if (unlockAnimationProgress < 1) {
+                    unlockAnimationProgress += 0.02;
+                    if (unlockAnimationProgress < 0.5) {
+                        shackleGroup.position.y = (unlockAnimationProgress / 0.5) * 0.5; 
+                    } else {
+                         shackleGroup.rotation.y = ((unlockAnimationProgress - 0.5) / 0.5) * Math.PI / 2;
+                    }
+                } else if (doorSlideProgress < 2.2) {
+                    lockGroup.visible = false;
+                    doorSlideProgress += 0.03;
+                    if(leftSlidingDoor) leftSlidingDoor.position.x = doorInitialXLeft - doorSlideProgress;
+                    if(rightSlidingDoor) rightSlidingDoor.position.x = doorInitialXRight + doorSlideProgress;
                 }
             }
 
-            lastCorrectIndex = correctIdx;
-
-            currentProblem = {
-                base: candidateProblem.base,
-                angle: candidateProblem.angle,
-                options: sortedOptions,
-                correctIndex: correctIdx
-            };
-            
-            updateScaleAndGoal();
-
-            const pBase = document.getElementById('prob-base');
-            const pAngle = document.getElementById('prob-angle');
-            if (pBase) pBase.innerText = currentProblem.base;
-            if (pAngle) pAngle.innerText = currentProblem.angle;
-
-            const opts = currentProblem.options;
-            const opt0 = document.getElementById('opt-0');
-            const opt1 = document.getElementById('opt-1');
-            const opt2 = document.getElementById('opt-2');
-            if (opt0) opt0.innerText = `① ${opts[0]}m`;
-            if (opt1) opt1.innerText = `② ${opts[1]}m`;
-            if (opt2) opt2.innerText = `③ ${opts[2]}m`;
-
-            const btn0 = document.getElementById('manual-btn-0');
-            const btn1 = document.getElementById('manual-btn-1');
-            const btn2 = document.getElementById('manual-btn-2');
-            if (btn0) btn0.innerText = `① ${opts[0]}m`;
-            if (btn1) btn1.innerText = `② ${opts[1]}m`;
-            if (btn2) btn2.innerText = `③ ${opts[2]}m`;
-
-            resetBall();
-            gameState = 'waiting';
-            prepCooldownMs = PREP_TIME_MS;
-            holdTimeMs = 0;
-            lastPredictTime = 0;
-
-            const gaugeContainer = document.getElementById('hold-gauge-container');
-            if (gaugeContainer) gaugeContainer.classList.add('hidden');
+            controls.update();
+            renderer.render(scene, camera);
         }
-
-        function retryProblem() {
-            const popup = document.getElementById('result-popup');
-            if (popup) popup.classList.add('hidden');
-
-            resetBall();
-            gameState = 'waiting';
-            prepCooldownMs = PREP_TIME_MS;
-            holdTimeMs = 0;
-            lastPredictTime = 0;
-
-            const gaugeContainer = document.getElementById('hold-gauge-container');
-            if (gaugeContainer) gaugeContainer.classList.add('hidden');
-        }
-
-        const ball = { x: 0, y: 0, radius: 24, startX: 0, startY: 0, targetX: 0, targetY: 0, controlX: 0, controlY: 0, frame: 0, duration: 60 };
-
-        function resetBall() {
-            ball.x = CHARACTER_X + 25;
-            ball.y = EYE_LEVEL_Y - 25;
-        }
-
-        function triggerShoot(optIndex) {
-            if (gameState !== 'waiting') return;
-            gameState = 'shooting';
-            selectedOptionIndex = optIndex;
-
-            const targetMeters = parseOptionValue(currentProblem.options[optIndex]);
-            const targetX = GOAL_X - 30;
-            const targetY = EYE_LEVEL_Y - (targetMeters * SCALE_Y);
-
-            ball.startX = ball.x;
-            ball.startY = ball.y;
-            ball.targetX = targetX;
-            ball.targetY = targetY;
-            
-            ball.duration = 60; 
-            ball.frame = 0;
-            
-            const desiredApexY = Math.min(ball.startX, ball.targetY) - 50;
-            const safeApexY = Math.max(20, desiredApexY);
-            
-            ball.controlX = (ball.startX + ball.targetX) / 2;
-            ball.controlY = safeApexY;
-        }
-
-        function updateBall() {
-            if (gameState !== 'shooting') return;
-
-            ball.frame++;
-            const t = ball.frame / ball.duration;
-
-            if (t >= 1) {
-                gameState = 'result';
-                ball.x = ball.targetX;
-                ball.y = ball.targetY;
-                checkResult();
-            } else {
-                ball.x = (1 - t) * (1 - t) * ball.startX + 2 * (1 - t) * t * ball.controlX + t * t * ball.targetX;
-                ball.y = (1 - t) * (1 - t) * ball.startY + 2 * (1 - t) * t * ball.controlY + t * t * ball.targetY;
-            }
-        }
-
-        function checkResult() {
-            const isCorrect = (selectedOptionIndex === currentProblem.correctIndex);
-            const popup = document.getElementById('result-popup');
-            const resultText = document.getElementById('result-text');
-            const retryBtn = document.getElementById('retry-btn');
-            
-            if (isCorrect) {
-                window.score += 10;
-                const scoreEl = document.getElementById('score');
-                if (scoreEl) scoreEl.innerText = window.score;
-                if (resultText) resultText.innerText = "정답! 🏀";
-                if (popup) popup.className = "absolute top-1/2 left-1/2 pop-up bg-teal-600 text-white px-6 py-4 rounded-2xl font-bold text-center shadow-2xl z-20 flex flex-col items-center gap-3 min-w-[220px]";
-                if (retryBtn) retryBtn.classList.add('hidden');
-            } else {
-                if (resultText) resultText.innerText = "오답! ❌";
-                if (popup) popup.className = "absolute top-1/2 left-1/2 pop-up bg-red-500 text-white px-6 py-4 rounded-2xl font-bold text-center shadow-2xl z-20 flex flex-col items-center gap-3 min-w-[220px]";
-                if (retryBtn) retryBtn.classList.remove('hidden');
-            }
-            
-            if (popup) popup.classList.remove('hidden');
-        }
-
-        function drawFractionText(text, x, y, color = "black", size = 26) {
-            if (!ctx) return;
-            ctx.fillStyle = color;
-            ctx.font = `bold ${size}px 'Inter', sans-serif`;
-            ctx.textAlign = "center";
-            ctx.textBaseline = "middle";
-
-            if (typeof text === 'string' && text.includes('/')) {
-                const parts = text.split('/');
-                ctx.fillText(parts[0], x, y - Math.floor(size*0.6));
-                ctx.fillRect(x - size, y, size*2, 2.5); 
-                ctx.fillText(parts[1], x, y + Math.floor(size*0.6));
-            } else {
-                ctx.fillText(text, x, y);
-            }
-        }
-
-        function drawCharacter() {
-            if (!ctx) return;
-            const cx = CHARACTER_X;
-            const cy = FLOOR_Y;
-            const skinColor = "#ffedd5";
-
-            ctx.fillStyle = skinColor; 
-            ctx.fillRect(cx - 18, cy - 60, 14, 60);
-            ctx.fillRect(cx + 4, cy - 60, 14, 60);
-
-            ctx.fillStyle = "#2563eb";
-            ctx.fillRect(cx - 22, cy - 60, 20, 26);
-            ctx.fillRect(cx + 2, cy - 60, 20, 26);
-            
-            ctx.fillStyle = "#1d4ed8";
-            ctx.beginPath();
-            ctx.arc(cx - 11, cy, 11, 0, Math.PI, true);
-            ctx.arc(cx + 11, cy, 11, 0, Math.PI, true);
-            ctx.fill();
-
-            ctx.fillStyle = "#ffffff";
-            ctx.fillRect(cx - 26, cy - 130, 52, 70);
-            ctx.strokeStyle = "#cbd5e1";
-            ctx.lineWidth = 2;
-            ctx.strokeRect(cx - 26, cy - 130, 52, 70);
-
-            ctx.fillStyle = "black";
-            ctx.font = "bold 17px 'Inter', sans-serif";
-            ctx.textAlign = "center";
-            ctx.textBaseline = "middle";
-            ctx.fillText("하안", cx, cy - 82);
-
-            ctx.strokeStyle = skinColor;
-            ctx.lineWidth = 14;
-            ctx.lineCap = "round";
-            ctx.beginPath();
-            ctx.moveTo(cx - 26, cy - 118);
-            ctx.lineTo(cx - 48, cy - 165);
-            ctx.moveTo(cx + 26, cy - 118);
-            ctx.lineTo(cx + 48, cy - 165);
-            ctx.stroke();
-
-            ctx.strokeStyle = "#cbd5e1";
-            ctx.lineWidth = 2;
-            ctx.beginPath();
-            ctx.moveTo(cx - 26, cy - 130);
-            ctx.lineTo(cx - 14, cy - 130);
-            ctx.moveTo(cx + 14, cy - 130);
-            ctx.lineTo(cx + 26, cy - 130);
-            ctx.stroke();
-
-            const faceY = EYE_LEVEL_Y;
-            const faceRadius = 32;
-            ctx.fillStyle = skinColor; 
-            ctx.beginPath();
-            ctx.arc(cx, faceY, faceRadius, 0, Math.PI * 2); 
-            ctx.fill();
-
-            ctx.fillStyle = "#0f172a";
-            ctx.beginPath();
-            ctx.arc(cx, faceY, faceRadius, Math.PI * 1.22, Math.PI * 1.78, false); 
-            ctx.fill();
-
-            ctx.beginPath();
-            ctx.arc(cx, faceY - 14, 20, Math.PI * 1.1, Math.PI * 1.9, false);
-            ctx.fill();
-
-            ctx.fillStyle = "#0f172a";
-            ctx.beginPath();
-            ctx.arc(cx - 12, faceY - 2, 6, 0, Math.PI * 2);
-            ctx.arc(cx + 12, faceY - 2, 6, 0, Math.PI * 2);
-            ctx.fill();
-
-            ctx.fillStyle = "#ffffff";
-            ctx.beginPath();
-            ctx.arc(cx - 14, faceY - 4, 2.5, 0, Math.PI * 2);
-            ctx.arc(cx + 10, faceY - 4, 2.5, 0, Math.PI * 2);
-            ctx.fill();
-            
-            ctx.strokeStyle = "#0f172a";
-            ctx.lineWidth = 3.5;
-            ctx.beginPath();
-            ctx.arc(cx, faceY + 12, 10, 0, Math.PI, false);
-            ctx.stroke();
-        }
-
-        function drawMathUI() {
-            if (!currentProblem || !ctx) return;
-
-            ctx.fillStyle = "#f1f5f9";
-            ctx.fillRect(0, FLOOR_Y, width, height - FLOOR_Y);
-
-            ctx.strokeStyle = "#cbd5e1";
-            ctx.lineWidth = 5;
-            ctx.beginPath();
-            ctx.moveTo(0, FLOOR_Y);
-            ctx.lineTo(width, FLOOR_Y);
-            ctx.stroke();
-
-            ctx.strokeStyle = "#94a3b8";
-            ctx.lineWidth = 3;
-            ctx.setLineDash([8, 6]);
-            ctx.beginPath();
-            ctx.moveTo(CHARACTER_X, EYE_LEVEL_Y);
-            ctx.lineTo(GOAL_X, EYE_LEVEL_Y);
-            ctx.stroke();
-            ctx.setLineDash([]);
-
-            const midX = (CHARACTER_X + GOAL_X) / 2;
-            drawFractionText(currentProblem.base + "m", midX, EYE_LEVEL_Y + 28, "#0d9488", 28);
-
-            const correctTargetMeters = parseOptionValue(currentProblem.options[currentProblem.correctIndex]);
-            const correctTargetY = EYE_LEVEL_Y - (correctTargetMeters * SCALE_Y);
-
-            ctx.strokeStyle = "#f87171";
-            ctx.lineWidth = 2.5;
-            ctx.setLineDash([6, 5]);
-            ctx.beginPath();
-            ctx.moveTo(CHARACTER_X, EYE_LEVEL_Y);
-            ctx.lineTo(GOAL_X - 30, correctTargetY);
-            ctx.stroke();
-            ctx.setLineDash([]);
-
-            const radius = 75;
-            const sightDeltaX = (GOAL_X - 30) - CHARACTER_X;
-            const sightDeltaY = EYE_LEVEL_Y - correctTargetY;
-            const visualAngle = Math.atan2(sightDeltaY, sightDeltaX);
-            const startAngle = 0;
-            const endAngle = -visualAngle;
-
-            ctx.strokeStyle = "#ef4444";
-            ctx.lineWidth = 3.5;
-            ctx.beginPath();
-            ctx.arc(CHARACTER_X, EYE_LEVEL_Y, radius, startAngle, endAngle, true);
-            ctx.stroke();
-
-            const textX = CHARACTER_X + Math.cos(endAngle / 2) * (radius + 28);
-            const textY = EYE_LEVEL_Y + Math.sin(endAngle / 2) * (radius + 28);
-            drawFractionText(currentProblem.angle + "°", textX, textY, "#ef4444", 26);
-
-            const xDimensionX = GOAL_X + 25;
-
-            ctx.strokeStyle = "#ef4444";
-            ctx.lineWidth = 3;
-            ctx.setLineDash([5, 4]);
-            ctx.beginPath();
-            ctx.moveTo(xDimensionX, EYE_LEVEL_Y);
-            ctx.lineTo(xDimensionX, correctTargetY);
-            ctx.stroke();
-            ctx.setLineDash([]);
-
-            ctx.strokeStyle = "#ef4444";
-            ctx.lineWidth = 3.5;
-            ctx.beginPath();
-            ctx.moveTo(xDimensionX - 8, EYE_LEVEL_Y);
-            ctx.lineTo(xDimensionX + 8, EYE_LEVEL_Y);
-            ctx.moveTo(xDimensionX - 8, correctTargetY);
-            ctx.lineTo(xDimensionX + 8, correctTargetY);
-            ctx.stroke();
-
-            const xMidY = (EYE_LEVEL_Y + correctTargetY) / 2;
-            ctx.fillStyle = "#ef4444";
-            ctx.font = "italic bold 36px 'Inter', sans-serif";
-            ctx.textAlign = "left";
-            ctx.textBaseline = "middle";
-            ctx.fillText("x", xDimensionX + 12, xMidY);
-        }
-
-        function drawGoal() {
-            if (!ctx) return;
-            const correctTargetMeters = parseOptionValue(currentProblem.options[currentProblem.correctIndex]);
-            const targetY = EYE_LEVEL_Y - (correctTargetMeters * SCALE_Y);
-
-            ctx.fillStyle = "#475569";
-            ctx.fillRect(GOAL_X - 6, targetY - 45, 12, FLOOR_Y - (targetY - 45));
-
-            const boardTopY = targetY - 60;
-            const boardHeight = 110;
-            ctx.fillStyle = "white";
-            ctx.fillRect(GOAL_X - 8, boardTopY, 12, boardHeight);
-            ctx.strokeStyle = "#ea580c";
-            ctx.lineWidth = 3.5;
-            ctx.strokeRect(GOAL_X - 8, boardTopY, 12, boardHeight);
-
-            ctx.strokeStyle = "#ea580c";
-            ctx.lineWidth = 2.5;
-            ctx.strokeRect(GOAL_X - 8, targetY - 25, 10, 35);
-
-            ctx.fillStyle = "#ea580c";
-            ctx.fillRect(GOAL_X - 52, targetY, 44, 7);
-
-            ctx.fillStyle = "#c2410c";
-            ctx.fillRect(GOAL_X - 8, targetY - 3, 8, 12);
-
-            ctx.strokeStyle = "#cbd5e1";
-            ctx.lineWidth = 2;
-            ctx.beginPath();
-            ctx.moveTo(GOAL_X - 50, targetY + 7);
-            ctx.lineTo(GOAL_X - 42, targetY + 38);
-            ctx.lineTo(GOAL_X - 18, targetY + 38);
-            ctx.lineTo(GOAL_X - 10, targetY + 7);
-            ctx.stroke();
-        }
-
-        function drawBall() {
-            if (!ctx) return;
-            ctx.fillStyle = "#ea580c";
-            ctx.beginPath();
-            ctx.arc(ball.x, ball.y, ball.radius, 0, Math.PI * 2);
-            ctx.fill();
-            
-            ctx.strokeStyle = "#431407";
-            ctx.lineWidth = 2;
-            
-            ctx.beginPath();
-            ctx.moveTo(ball.x - ball.radius, ball.y);
-            ctx.lineTo(ball.x + ball.radius, ball.y);
-            ctx.stroke();
-            
-            ctx.beginPath();
-            ctx.moveTo(ball.x, ball.y - ball.radius);
-            ctx.lineTo(ball.x, ball.y + ball.radius);
-            ctx.stroke();
-
-            ctx.beginPath();
-            ctx.moveTo(ball.x - ball.radius + 4, ball.y - ball.radius * 0.65);
-            ctx.quadraticCurveTo(ball.x - ball.radius * 0.2, ball.y, ball.x - ball.radius + 4, ball.y + ball.radius * 0.65);
-            ctx.stroke();
-
-            ctx.beginPath();
-            ctx.moveTo(ball.x + ball.radius - 4, ball.y - ball.radius * 0.65);
-            ctx.quadraticCurveTo(ball.x + ball.radius * 0.2, ball.y, ball.x + ball.radius - 3, ball.y + ball.radius * 0.65);
-            ctx.stroke();
-        }
-
-        function gameLoop() {
-            if (ctx) {
-                ctx.clearRect(0, 0, width, height);
-
-                if (currentProblem) {
-                    updateBall();
-                    drawMathUI();
-                    drawGoal();
-                    drawCharacter();
-                    drawBall();
-                }
-            }
-
-            requestAnimationFrame(gameLoop);
-        }
-
+        
+        // 브라우저 렌더링이 완료된 후 사이즈 한번 맞춰주기
         window.onload = function() {
-            canvas = document.getElementById('gameCanvas');
-            if (canvas) {
-                canvas.width = width;
-                canvas.height = height;
-                ctx = canvas.getContext('2d');
-            }
-            nextProblem();
-            gameLoop();
+            resizeCanvas();
+            animate();
         };
     </script>
 </body>
