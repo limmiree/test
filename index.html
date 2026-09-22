@@ -95,16 +95,22 @@ button{font-family:inherit;cursor:pointer;}
 .title-foot{
   margin:12px 0 0;text-align:center;font-size:11.5px;color:#5f6979;
 }
-.student-form{margin:0 0 12px;}
-.student-row{display:grid;grid-template-columns:1fr 1.3fr;gap:8px;}
-.student-input{
-  width:100%;background:rgba(11,16,25,.72);border:1px solid var(--line);color:var(--chalk);
-  font-size:15px;padding:11px 12px;font-family:inherit;
+.id-form{
+  display:grid;grid-template-columns:1fr 1fr;gap:8px;margin:0 0 12px;
 }
-.student-input:focus{border-color:var(--key);}
-.student-input.err{border-color:var(--blood);}
-.student-error{display:none;margin:8px 0 0;font-size:11.5px;color:#ff6b6b;}
-.student-error.on{display:block;}
+.id-form label{
+  display:flex;flex-direction:column;gap:5px;font-size:11px;color:var(--dim);letter-spacing:.03em;
+}
+.id-form input{
+  background:rgba(11,16,25,.72);border:1px solid var(--line);color:var(--chalk);
+  font-size:15px;padding:10px 11px;font-family:inherit;
+}
+.id-form input:focus{border-color:var(--key);}
+.id-form input[disabled]{opacity:.55;}
+#id-error{
+  display:none;margin:0 0 10px;font-size:11.5px;color:#ff6b6b;text-align:center;
+}
+#id-error.on{display:block;}
 
 /* ---------- 1~3. 스테이지 ---------- */
 #screen-stage{background:var(--ink-2);}
@@ -264,13 +270,15 @@ button{font-family:inherit;cursor:pointer;}
           <span class="lock-state">잠김</span>
         </li>
     </ul>
-    <div class="student-form" id="student-form">
-      <div class="student-row">
-        <input type="text" id="student-id" class="student-input" placeholder="학번 (예: 30215)" inputmode="numeric" maxlength="10" autocomplete="off">
-        <input type="text" id="student-name" class="student-input" placeholder="이름" maxlength="10" autocomplete="off">
-      </div>
-      <p id="student-error" class="student-error">학번과 이름을 모두 입력해야 시작할 수 있습니다.</p>
+    <div class="id-form" id="id-form">
+      <label>학번
+        <input type="text" id="stu-id" inputmode="numeric" placeholder="예: 30512" maxlength="10" autocomplete="off">
+      </label>
+      <label>이름
+        <input type="text" id="stu-name" placeholder="이름" maxlength="10" autocomplete="off">
+      </label>
     </div>
+    <p id="id-error">학번과 이름을 모두 입력해야 탈출을 시작할 수 있어요.</p>
     <button class="start-btn" id="btn-start">탈출 시작</button>
     <p class="title-foot">중학교 3학년 · 삼각비 단원 · 특수각 삼각비 표 제공</p>
   </div>
@@ -2680,56 +2688,30 @@ button{font-family:inherit;cursor:pointer;}
     {no:3, title:'건물 높이의 비밀', clear:'정문이 열렸다',    note:'본관의 높이를 정확히 구하자 마지막 잠금이 풀렸다.'}
   ];
 
+  // ===== 구글 시트 연동 =====
+  // 배포한 Google Apps Script 웹 앱 URL을 아래에 붙여넣으세요.
+  var GAS_URL = 'https://script.google.com/macros/s/AKfycbz_wF5Djl6AUyiSy1-NeTb3fyqW_xI2D8QAQjXW_6wk_CDmFgQegbYsRUg1I3OqBd8KxA/exec';
+
+  var studentId = '';
+  var studentName = '';
+
+  function postToSheet(payload){
+    if (!GAS_URL || GAS_URL.indexOf('http') !== 0) return; // URL 미설정 시 전송 생략
+    payload.studentId = studentId;
+    payload.name = studentName;
+    try{
+      fetch(GAS_URL, {
+        method: 'POST',
+        headers: { 'Content-Type': 'text/plain;charset=utf-8' }, // 프리플라이트(OPTIONS) 회피
+        body: JSON.stringify(payload)
+      }).catch(function(err){ console.warn('시트 전송 실패:', err); });
+    }catch(err){ console.warn('시트 전송 오류:', err); }
+  }
+
   var stage = 0;            // 0 = 대문
   var cleared = [false,false,false];
   var startedAt = null;
-  var stageStart = [null,null,null];   // 각 관문에 처음 들어간 시각
-  var stageTime  = [0,0,0];            // 각 관문 통과에 걸린 시간(ms)
-
-  // ▼▼▼ 배포 후 여기에 앱스크립트 웹앱 주소를 붙여넣으세요 ▼▼▼
-  var SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbxNzzDMlHcAoogRjV70cO_tzhDncrxbyR7-K-Afx76y5GSvlsrCXuWdUfLkebn_Lhq_/exec';
-  // ▲▲▲ 예: https://script.google.com/macros/s/AKfycb.../exec ▲▲▲
-
-  function fmtTime(ms){
-    var s = Math.max(0, Math.floor(ms / 1000));
-    var m = Math.floor(s / 60);
-    return ('0' + m).slice(-2) + ':' + ('0' + (s % 60)).slice(-2);
-  }
-
-  function submitResult(){
-    var idInput = document.getElementById('student-id');
-    var nameInput = document.getElementById('student-name');
-    var studentId = idInput ? idInput.value.trim() : '';
-    var studentName = nameInput ? nameInput.value.trim() : '';
-    var totalMs = startedAt !== null ? (Date.now() - startedAt) : 0;
-
-    var payload = {
-      studentId: studentId,
-      studentName: studentName,
-      stage1: fmtTime(stageTime[0]),
-      stage2: fmtTime(stageTime[1]),
-      stage3: fmtTime(stageTime[2]),
-      total:  fmtTime(totalMs),
-      stage1Sec: Math.round(stageTime[0] / 1000),
-      stage2Sec: Math.round(stageTime[1] / 1000),
-      stage3Sec: Math.round(stageTime[2] / 1000),
-      totalSec:  Math.round(totalMs / 1000)
-    };
-
-    if (!SCRIPT_URL || SCRIPT_URL.indexOf('PASTE_YOUR') === 0) {
-      console.warn('앱스크립트 주소가 설정되지 않아 기록을 전송하지 않았습니다.', payload);
-      return;
-    }
-
-    fetch(SCRIPT_URL, {
-      method: 'POST',
-      mode: 'no-cors',
-      headers: { 'Content-Type': 'text/plain;charset=utf-8' },
-      body: JSON.stringify(payload)
-    }).catch(function(err){
-      console.error('기록 전송 실패:', err);
-    });
-  }
+  var stageEnterAt = [null, null, null]; // 각 단계에 처음 진입한 시각
 
   var screens = {
     title: document.getElementById('screen-title'),
@@ -2773,7 +2755,7 @@ button{font-family:inherit;cursor:pointer;}
   function goStage(n){
     stage = n;
     if (startedAt === null) startedAt = Date.now();
-    if (stageStart[n-1] === null) stageStart[n-1] = Date.now();
+    if (stageEnterAt[n-1] === null) stageEnterAt[n-1] = Date.now();
     veil.classList.remove('on');
     closePwPop();
     show('stage');
@@ -2791,9 +2773,6 @@ button{font-family:inherit;cursor:pointer;}
   function onClear(){
     if (stage === 0 || cleared[stage-1]) return;
     cleared[stage-1] = true;
-    if (stageStart[stage-1] !== null) {
-      stageTime[stage-1] = Date.now() - stageStart[stage-1];
-    }
     paintBar();
     paintLocks();
     var m = META[stage-1];
@@ -2802,6 +2781,16 @@ button{font-family:inherit;cursor:pointer;}
     document.getElementById('veil-p').textContent = m.note;
     document.getElementById('btn-next').textContent = (stage < 3) ? '다음 자물쇠로' : '학교 밖으로 나가기';
     setTimeout(function(){ veil.classList.add('on'); }, 700);
+
+    // ---- 구글 시트로 단계별 소요 시간 전송 ----
+    var now = Date.now();
+    var enterAt = stageEnterAt[stage-1] || startedAt || now;
+    var stageSeconds = Math.max(0, Math.round((now - enterAt) / 1000));
+    var payload = { stage: stage, stageSeconds: stageSeconds };
+    if (stage === 3) {
+      payload.totalSeconds = Math.max(0, Math.round((now - startedAt) / 1000));
+    }
+    postToSheet(payload);
   }
 
   window.addEventListener('message', function(e){
@@ -2853,19 +2842,25 @@ button{font-family:inherit;cursor:pointer;}
     }
   });
 
+  var idForm = document.getElementById('id-form');
+  var idError = document.getElementById('id-error');
+  var stuIdInput = document.getElementById('stu-id');
+  var stuNameInput = document.getElementById('stu-name');
+
   document.getElementById('btn-start').addEventListener('click', function(){
-    var idInput = document.getElementById('student-id');
-    var nameInput = document.getElementById('student-name');
-    var errMsg = document.getElementById('student-error');
-    var okId = idInput.value.trim().length > 0;
-    var okName = nameInput.value.trim().length > 0;
-    idInput.classList.toggle('err', !okId);
-    nameInput.classList.toggle('err', !okName);
-    if (!okId || !okName) {
-      errMsg.classList.add('on');
+    var idVal = stuIdInput.value.trim();
+    var nameVal = stuNameInput.value.trim();
+    if (!idVal || !nameVal) {
+      idError.classList.add('on');
+      (idVal ? stuNameInput : stuIdInput).focus();
       return;
     }
-    errMsg.classList.remove('on');
+    idError.classList.remove('on');
+    studentId = idVal;
+    studentName = nameVal;
+    stuIdInput.disabled = true;
+    stuNameInput.disabled = true;
+
     var next = cleared.indexOf(false);
     goStage(next === -1 ? 1 : next + 1);
   });
@@ -2886,7 +2881,6 @@ button{font-family:inherit;cursor:pointer;}
       goStage(stage + 1);
     } else {
       document.getElementById('end-time').textContent = elapsed();
-      submitResult();
       stage = 0;
       show('end');
     }
@@ -2895,8 +2889,7 @@ button{font-family:inherit;cursor:pointer;}
   document.getElementById('btn-again').addEventListener('click', function(){
     cleared = [false,false,false];
     startedAt = null;
-    stageStart = [null,null,null];
-    stageTime = [0,0,0];
+    stageEnterAt = [null, null, null];
     for (var i = 1; i <= 3; i++) frame(i).removeAttribute('srcdoc');
     paintLocks();
     goStage(1);
@@ -2905,11 +2898,16 @@ button{font-family:inherit;cursor:pointer;}
   document.getElementById('btn-end-home').addEventListener('click', function(){
     cleared = [false,false,false];
     startedAt = null;
-    stageStart = [null,null,null];
-    stageTime = [0,0,0];
+    stageEnterAt = [null, null, null];
     for (var i = 1; i <= 3; i++) frame(i).removeAttribute('srcdoc');
     paintLocks();
     stage = 0;
+    stuIdInput.disabled = false;
+    stuNameInput.disabled = false;
+    stuIdInput.value = '';
+    stuNameInput.value = '';
+    studentId = '';
+    studentName = '';
     show('title');
   });
 })();
