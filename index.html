@@ -2,1062 +2,408 @@
 <html lang="ko">
 <head>
     <meta charset="UTF-8">
-    <!-- 모바일 폼 입력 시 자동 확대 방지를 위해 maximum-scale=1.0, user-scalable=no 추가 -->
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>방탈출: 건물 높이의 비밀</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>비밀 연구소 방탈출</title>
+    <!-- Tailwind CSS 로드 -->
     <script src="https://cdn.tailwindcss.com"></script>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
+    <!-- 구글 폰트 적용 -->
+    <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@300;400;700;900&family=Black+Han+Sans&display=swap" rel="stylesheet">
     
     <style>
         body {
-            margin: 0;
-            overflow: hidden; /* 모바일에서 전체 스크롤 방지 */
-            font-family: 'Inter', sans-serif;
-            background-color: #1a202c;
+            font-family: 'Noto Sans KR', sans-serif;
+            background-color: #0f172a; /* 어두운 배경 */
+            color: #e2e8f0;
+            overflow-x: hidden;
         }
-        
-        #main-wrapper {
-            position: relative;
-            width: 100vw;
-            height: 100vh;
+        .title-font {
+            font-family: 'Black Han Sans', sans-serif;
+        }
+        .screen {
+            display: none;
+            animation: fadeIn 0.5s ease-in-out;
+        }
+        .screen.active {
             display: flex;
-            flex-direction: row; /* 데스크탑 기본: 행 방향 */
         }
-
-        #canvas-container {
-            position: relative;
-            flex: 1; /* 데스크탑에서 전체 화면 차지 */
-            height: 100%;
-            overflow: hidden;
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(10px); }
+            to { opacity: 1; transform: translateY(0); }
         }
-        
-        #ui-panel {
-            position: absolute;
-            top: 20px;
-            right: 20px;
-            width: 350px;
-            background: rgba(255, 255, 255, 0.95);
-            padding: 24px;
-            border-radius: 16px;
-            box-shadow: 0 10px 25px rgba(0,0,0,0.2);
-            backdrop-filter: blur(10px);
-            color: #1e293b;
-            z-index: 10;
+        /* 에러 발생 시 흔들림 애니메이션 */
+        .shake {
+            animation: shake 0.4s cubic-bezier(.36,.07,.19,.97) both;
         }
-
-        #info-panel {
-            position: absolute;
-            bottom: 20px;
-            left: 20px;
-            background: rgba(0, 0, 0, 0.7);
-            color: white;
-            padding: 15px;
-            border-radius: 8px;
-            font-size: 0.85rem;
-            max-width: 300px;
-            pointer-events: none;
-            z-index: 10;
+        @keyframes shake {
+            10%, 90% { transform: translate3d(-1px, 0, 0); }
+            20%, 80% { transform: translate3d(2px, 0, 0); }
+            30%, 50%, 70% { transform: translate3d(-4px, 0, 0); }
+            40%, 60% { transform: translate3d(4px, 0, 0); }
         }
-
-        .slider-container {
-            margin-bottom: 20px;
-        }
-        .slider-label {
-            display: flex;
-            justify-content: space-between;
-            font-weight: 600;
-            color: #4a5568;
-            margin-bottom: 8px;
-            font-size: 0.9rem;
-        }
-        input[type=range] {
-            width: 100%;
-            cursor: pointer;
-            accent-color: #3182ce;
-            height: 6px;
-            background: #e2e8f0;
-            border-radius: 4px;
-            appearance: none;
-        }
-        input[type=range]::-webkit-slider-thumb {
-            appearance: none;
-            width: 16px;
-            height: 16px;
-            background: #3182ce;
+        /* 로딩 스피너 */
+        .loader {
+            border: 4px solid #334155;
+            border-top: 4px solid #3b82f6;
             border-radius: 50%;
-            border: 2px solid white;
-            box-shadow: 0 1px 3px rgba(0,0,0,0.3);
+            width: 24px;
+            height: 24px;
+            animation: spin 1s linear infinite;
         }
-
-        #mission-panel {
-            margin-top: 20px;
-            padding-top: 15px;
-            border-top: 2px dashed #cbd5e1;
-        }
-        .input-group {
-            display: flex;
-            flex-direction: column;
-            gap: 10px;
-            margin-top: 10px;
-        }
-        input[type=number] {
-            flex: 1;
-            padding: 10px;
-            border-radius: 8px;
-            border: 1px solid #94a3b8;
-            background: #ffffff;
-            color: #1e293b;
-            font-size: 1.1rem;
-            text-align: center;
-            outline: none;
-            transition: border-color 0.2s;
-        }
-        input[type=number]:focus {
-            border-color: #3182ce;
-        }
-        button {
-            padding: 10px 20px;
-            background: #3182ce;
-            color: white;
-            border: none;
-            border-radius: 8px;
-            font-weight: bold;
-            cursor: pointer;
-            transition: transform 0.1s, background-color 0.2s;
-        }
-        button:hover {
-            background-color: #2b6cb0;
-        }
-        button:active {
-            transform: translateY(2px);
-        }
-        
-        .math-text {
-            font-family: 'Times New Roman', Times, serif;
-            font-style: italic;
-        }
-
-        #trig-btn {
-            background: #ffffff;
-            color: #1e293b;
-            padding: 6px 12px;
-            border-radius: 8px;
-            font-weight: bold;
-            box-shadow: 0 2px 4px rgba(0,0,0,0.08);
-            cursor: pointer;
-            display: flex;
-            align-items: center;
-            gap: 6px;
-            transition: all 0.2s;
-            border: 1px solid #cbd5e1;
-            font-size: 0.85rem;
-        }
-        #trig-btn:hover {
-            background: #f1f5f9;
-        }
-
-        #message-box {
-            display: none;
-            position: fixed;
-            top: 50%;
-            left: 50%;
-            transform: translate(-50%, -50%);
-            background: rgba(0, 0, 0, 0.88);
-            border: 2px solid #ef4444;
-            color: white;
-            padding: 20px 30px;
-            border-radius: 12px;
-            font-size: 1.1rem;
-            font-weight: bold;
-            z-index: 50;
-            text-align: center;
-            box-shadow: 0 0 20px rgba(239, 68, 68, 0.5);
-            max-width: 400px;
-            width: 90%;
-            line-height: 1.5;
-        }
-        
-        #success-overlay {
-            display: none;
-            position: fixed;
-            top: 0;
-            left: 0;
-            width: 100vw;
-            height: 100vh;
-            background: rgba(0, 0, 0, 0.8);
-            z-index: 100;
-            flex-direction: column;
-            justify-content: center;
-            align-items: center;
-            backdrop-filter: blur(5px);
-            text-align: center;
-            padding: 20px;
-        }
-
-        #trig-modal {
-            display: none;
-            position: fixed;
-            top: 0; left: 0; width: 100vw; height: 100vh;
-            background: rgba(0,0,0,0.6);
-            z-index: 1000;
-            justify-content: center;
-            align-items: center;
-            backdrop-filter: blur(4px);
-        }
-        #trig-content {
-            background: white;
-            border-radius: 12px;
-            width: 90%;
-            max-width: 400px;
-            max-height: 80vh;
-            display: flex;
-            flex-direction: column;
-            box-shadow: 0 20px 25px -5px rgba(0,0,0,0.1);
-            overflow: hidden;
-        }
-        #trig-header {
-            padding: 16px;
-            border-bottom: 1px solid #e2e8f0;
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            background: #f8fafc;
-        }
-        #trig-body {
-            padding: 0;
-            overflow-y: auto;
-            flex-grow: 1;
-        }
-        .trig-table {
-            width: 100%;
-            border-collapse: collapse;
-            text-align: center;
-        }
-        .trig-table th, .trig-table td {
-            padding: 10px 8px;
-            border-bottom: 1px solid #e2e8f0;
-            font-size: 0.95rem;
-        }
-        .trig-table th {
-            background: #f1f5f9;
-            position: sticky;
-            top: 0;
-            z-index: 1;
-            color: #475569;
-        }
-
-        @media (max-width: 768px) {
-            #main-wrapper {
-                flex-direction: column; /* 세로 분할 */
-            }
-            #canvas-container {
-                flex: none;
-                height: 45vh; /* 3D 화면이 상단 45% 차지 */
-                width: 100%;
-            }
-            #ui-panel {
-                position: relative; /* 화면을 가리지 않고 아래에 안착 */
-                top: 0; right: 0;
-                width: 100%;
-                height: 55vh; /* UI가 하단 55% 차지 */
-                border-radius: 20px 20px 0 0;
-                box-shadow: 0 -4px 15px rgba(0,0,0,0.1);
-                padding: 15px 20px;
-                display: flex;
-                flex-direction: column;
-                justify-content: space-evenly; /* 스크롤 없이 공간 자동 분배 */
-            }
-            
-            /* 모바일에서 불필요한 마진 제거하여 공간 확보 */
-            .mb-5, .mb-3, .slider-container { margin-bottom: 0 !important; }
-            #mission-panel { margin-top: 0; padding-top: 5px; }
-            
-            /* 타이포그래피 미세 조정 */
-            .text-xl { font-size: 1.15rem; }
-            h3.text-md { font-size: 0.9rem; margin-bottom: 2px; }
-            p.text-sm { font-size: 0.75rem; line-height: 1.3; }
-            .slider-label { font-size: 0.8rem; margin-bottom: 5px; }
-            
-            /* 조작 방법 패널 모바일화 */
-            #info-panel {
-                bottom: 10px;
-                left: 10px;
-                padding: 10px;
-                font-size: 0.75rem;
-                background: rgba(0, 0, 0, 0.4); /* 덜 가리도록 반투명도 조절 */
-            }
-            
-            .trig-table th, .trig-table td {
-                padding: 8px 4px;
-                font-size: 0.85rem;
-            }
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
         }
     </style>
 </head>
-<body>
-    <div id="main-wrapper">
-        <div id="canvas-container">
-            <div id="info-panel">
-                <p class="font-bold mb-1 text-blue-300">조작 방법</p>
-                <ul class="list-disc pl-4 space-y-1 text-gray-200">
-                    <li class="hidden md:list-item">마우스 좌클릭 드래그: 카메라 회전</li>
-                    <li class="hidden md:list-item">마우스 휠: 화면 확대/축소</li>
-                    <li class="md:hidden">터치 드래그: 카메라 회전</li>
-                    <li class="md:hidden">두 손가락: 화면 확대/축소</li>
-                </ul>
+<body class="min-h-screen flex flex-col items-center justify-center p-4">
+
+    <!-- 글로벌 타이머 UI (게임 시작 시 표시됨) -->
+    <div id="timer-display" class="hidden fixed top-4 right-4 bg-gray-800 border border-gray-700 px-4 py-2 rounded-lg shadow-lg font-mono text-xl text-green-400 font-bold z-50">
+        00:00
+    </div>
+
+    <!-- 메인 컨테이너 -->
+    <div class="w-full max-w-2xl bg-gray-800 rounded-2xl shadow-2xl overflow-hidden border border-gray-700">
+        
+        <!-- 화면 1: 로그인 및 시작 화면 -->
+        <div id="screen-login" class="screen active flex-col p-8 md:p-12 items-center text-center">
+            <div class="mb-8">
+                <span class="text-blue-500 font-bold tracking-widest text-sm">MISSION LOG</span>
+                <h1 class="text-4xl md:text-5xl text-white mt-2 title-font tracking-wide">비밀 연구소 탈출</h1>
+                <p class="text-gray-400 mt-4 text-sm md:text-base">제한 구역에 갇혔습니다. 시스템의 보안 문제를 모두 풀고 이곳을 탈출하십시오.</p>
+            </div>
+            
+            <div class="w-full max-w-sm space-y-4 text-left">
+                <div>
+                    <label class="block text-sm font-medium text-gray-400 mb-1">학번 (예: 30101)</label>
+                    <input type="number" id="input-student-id" class="w-full bg-gray-900 border border-gray-600 rounded-lg px-4 py-3 text-white focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500 transition" placeholder="학번을 입력하세요">
+                </div>
+                <div>
+                    <label class="block text-sm font-medium text-gray-400 mb-1">이름</label>
+                    <input type="text" id="input-student-name" class="w-full bg-gray-900 border border-gray-600 rounded-lg px-4 py-3 text-white focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500 transition" placeholder="이름을 입력하세요">
+                </div>
+                <div id="login-error" class="text-red-400 text-sm hidden font-medium text-center">학번과 이름을 모두 정확히 입력해주세요.</div>
+                
+                <button onclick="startGame()" class="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-3 px-4 rounded-lg mt-6 transition duration-200 transform hover:scale-[1.02]">
+                    시스템 접속 (게임 시작)
+                </button>
             </div>
         </div>
 
-        <div id="ui-panel">
-            <div class="flex items-center justify-between mb-3">
-                <h2 class="text-xl font-bold text-gray-800 flex items-center gap-2">
-                    <span>🔒</span> 방탈출 미션
-                </h2>
-                <button id="trig-btn">
-                    <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                        <rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect>
-                        <line x1="3" y1="9" x2="21" y2="9"></line>
-                        <line x1="9" y1="21" x2="9" y2="9"></line>
-                    </svg>
-                    삼각비표
-                </button>
+        <!-- 화면 2: 제 1관문 -->
+        <div id="screen-stage1" class="screen flex-col p-8 md:p-12">
+            <div class="flex justify-between items-center mb-6 border-b border-gray-700 pb-4">
+                <h2 class="text-2xl font-bold text-white title-font">SECURITY LEVEL 1</h2>
+                <span class="bg-gray-700 text-xs px-2 py-1 rounded text-gray-300">1 / 3 단계</span>
             </div>
             
-            <div class="mb-5 border-l-4 border-blue-500 pl-3">
-                <h3 class="text-md font-bold text-blue-700 mb-1">문제.</h3>
-                <p class="text-sm text-gray-600 leading-relaxed">
-                    각도를 **건물 꼭대기(최대 각도)**로 조절한 뒤, 삼각비표를 이용하여 건물 전체의 높이를 구하여라.<br>
-                    <span class="text-xs text-gray-500">(반올림하여 소수점 아래 둘째자리까지 입력)</span>
+            <div class="bg-gray-900 p-6 rounded-lg mb-6 border border-gray-700">
+                <p class="text-gray-300 mb-4 leading-relaxed">
+                    첫 번째 잠금장치입니다. 다음 수열의 규칙을 찾고 빈칸에 들어갈 숫자를 입력하여 암호를 해제하십시오.
                 </p>
+                <div class="text-center py-6 bg-black rounded-md font-mono text-xl tracking-widest text-green-400 shadow-inner">
+                    2, 4, 8, 16, [ ? ]
+                </div>
             </div>
             
-            <div class="slider-container">
-                <div class="slider-label">
-                    <span>관찰자 키 (<span class="math-text">h₁</span>)</span>
-                    <span id="val-height" class="text-blue-600 font-bold">1.60 m</span>
-                </div>
-                <input type="range" id="slider-height" min="1.4" max="2.0" step="0.01" value="1.60">
+            <div class="flex gap-3">
+                <input type="number" id="answer-stage1" class="flex-1 bg-gray-900 border border-gray-600 rounded-lg px-4 py-3 text-white text-center font-bold text-xl focus:outline-none focus:border-blue-500" placeholder="정답">
+                <button onclick="checkStage1()" class="bg-blue-600 hover:bg-blue-700 px-6 py-3 rounded-lg font-bold text-white transition">입력</button>
+            </div>
+            <p id="error-stage1" class="text-red-400 text-sm mt-3 hidden">비밀번호가 일치하지 않습니다.</p>
+        </div>
+
+        <!-- 화면 3: 제 2관문 -->
+        <div id="screen-stage2" class="screen flex-col p-8 md:p-12">
+            <div class="flex justify-between items-center mb-6 border-b border-gray-700 pb-4">
+                <h2 class="text-2xl font-bold text-white title-font text-yellow-500">SECURITY LEVEL 2</h2>
+                <span class="bg-gray-700 text-xs px-2 py-1 rounded text-gray-300">2 / 3 단계</span>
             </div>
             
-            <div class="slider-container">
-                <div class="slider-label">
-                    <span>건물까지 거리 (<span class="math-text">d</span>)</span>
-                    <span id="val-distance" class="text-blue-600 font-bold">20.0 m</span>
+            <div class="bg-gray-900 p-6 rounded-lg mb-6 border border-gray-700">
+                <p class="text-gray-300 mb-4 leading-relaxed">
+                    시스템이 텍스트 암호로 보호되어 있습니다. 다음 수수께끼의 정답을 알아내십시오. (한글 2글자)
+                </p>
+                <div class="text-center py-6 bg-black rounded-md text-lg text-gray-200 italic shadow-inner">
+                    "나는 항상 네 앞에 있지만,<br>너는 나를 결코 볼 수 없다."
                 </div>
-                <input type="range" id="slider-distance" min="5" max="60" step="0.5" value="20.0">
             </div>
             
-            <div class="slider-container">
-                <div class="slider-label">
-                    <span>올려다보는 각도 (<span class="math-text">θ</span>)</span>
-                    <span id="val-angle" class="text-blue-600 font-bold">35°</span>
-                </div>
-                <input type="range" id="slider-angle" min="5" max="75" step="1" value="35">
+            <div class="flex gap-3">
+                <input type="text" id="answer-stage2" class="flex-1 bg-gray-900 border border-gray-600 rounded-lg px-4 py-3 text-white text-center font-bold text-xl focus:outline-none focus:border-yellow-500" placeholder="정답">
+                <button onclick="checkStage2()" class="bg-yellow-600 hover:bg-yellow-700 px-6 py-3 rounded-lg font-bold text-white transition">입력</button>
+            </div>
+            <p id="error-stage2" class="text-red-400 text-sm mt-3 hidden">시스템이 정답을 거부했습니다.</p>
+        </div>
+
+        <!-- 화면 4: 제 3관문 -->
+        <div id="screen-stage3" class="screen flex-col p-8 md:p-12">
+            <div class="flex justify-between items-center mb-6 border-b border-gray-700 pb-4">
+                <h2 class="text-2xl font-bold text-white title-font text-red-500">SECURITY LEVEL 3 (최종)</h2>
+                <span class="bg-gray-700 text-xs px-2 py-1 rounded text-gray-300">3 / 3 단계</span>
             </div>
             
-            <div id="mission-panel">
-                <div class="text-sm text-gray-600 mb-2 font-medium">
-                    힌트: <span class="math-text font-bold">H = h₁ + d × tan(θ)</span>
+            <div class="bg-gray-900 p-6 rounded-lg mb-6 border border-gray-700">
+                <p class="text-gray-300 mb-4 leading-relaxed">
+                    메인 서버 룸의 문입니다. 아래 알파벳 치환 암호를 해독하여 숫자를 입력하십시오.
+                </p>
+                <div class="text-center py-4 bg-black rounded-md text-sm text-gray-400 mb-3 font-mono">
+                    힌트: A=1, B=2, C=3, ... Z=26
                 </div>
-                <div class="input-group">
-                    <input type="number" id="user-answer" placeholder="예: 22.60" step="0.01">
-                    <button id="btn-submit">문 열기</button>
+                <div class="text-center py-6 bg-black rounded-md font-mono text-xl tracking-widest text-red-400 shadow-inner">
+                    A P P L E = ?
                 </div>
+            </div>
+            
+            <div class="flex gap-3">
+                <input type="number" id="answer-stage3" class="flex-1 bg-gray-900 border border-gray-600 rounded-lg px-4 py-3 text-white text-center font-bold text-xl focus:outline-none focus:border-red-500" placeholder="정답">
+                <button onclick="checkStage3()" class="bg-red-600 hover:bg-red-700 px-6 py-3 rounded-lg font-bold text-white transition">해제 및 탈출</button>
+            </div>
+            <p id="error-stage3" class="text-red-400 text-sm mt-3 hidden">경고: 잘못된 암호입니다.</p>
+        </div>
+
+        <!-- 화면 5: 탈출 성공 및 기록 전송 중 -->
+        <div id="screen-result" class="screen flex-col p-8 md:p-12 items-center text-center">
+            <div id="result-loading" class="flex flex-col items-center">
+                <div class="loader mb-4"></div>
+                <h2 class="text-2xl font-bold text-white title-font">데이터 전송 중...</h2>
+                <p class="text-gray-400 mt-2">탈출 기록을 메인 서버에 기록하고 있습니다.</p>
+            </div>
+            
+            <div id="result-success" class="hidden flex-col items-center w-full">
+                <div class="w-20 h-20 bg-green-900 rounded-full flex items-center justify-center mb-6">
+                    <svg class="w-10 h-10 text-green-400" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="3" d="M5 13l4 4L19 7"></path></svg>
+                </div>
+                <h2 class="text-3xl font-bold text-white title-font text-green-400 mb-2">탈출 성공!</h2>
+                <p class="text-gray-300 mb-6">모든 시스템 보안을 해제했습니다.</p>
+                
+                <div class="w-full bg-gray-900 rounded-lg p-4 border border-gray-700 space-y-2 text-left mb-6">
+                    <div class="flex justify-between"><span class="text-gray-400 text-sm">요원 이름:</span> <span id="res-name" class="text-white font-bold"></span></div>
+                    <div class="flex justify-between"><span class="text-gray-400 text-sm">1관문 기록:</span> <span id="res-st1" class="text-white font-mono"></span></div>
+                    <div class="flex justify-between"><span class="text-gray-400 text-sm">2관문 기록:</span> <span id="res-st2" class="text-white font-mono"></span></div>
+                    <div class="flex justify-between"><span class="text-gray-400 text-sm">3관문 기록:</span> <span id="res-st3" class="text-white font-mono"></span></div>
+                    <div class="border-t border-gray-700 pt-2 mt-2 flex justify-between">
+                        <span class="text-blue-400 font-bold">총 소요 시간:</span> 
+                        <span id="res-total" class="text-blue-400 font-bold font-mono text-lg"></span>
+                    </div>
+                </div>
+                <p class="text-sm text-gray-500">기록이 선생님의 시스템에 안전하게 저장되었습니다.</p>
+            </div>
+
+            <div id="result-error" class="hidden flex-col items-center w-full">
+                <div class="w-20 h-20 bg-red-900 rounded-full flex items-center justify-center mb-6">
+                    <svg class="w-10 h-10 text-red-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="3" d="M6 18L18 6M6 6l12 12"></path></svg>
+                </div>
+                <h2 class="text-2xl font-bold text-white title-font text-red-400 mb-2">통신 오류</h2>
+                <p class="text-gray-300 mb-6" id="error-msg-text">기록 저장 중 오류가 발생했습니다.</p>
             </div>
         </div>
-    </div>
 
-    <div id="trig-modal">
-        <div id="trig-content">
-            <div id="trig-header">
-                <h3 class="font-bold text-lg text-slate-800">교과서 삼각비표</h3>
-                <button id="trig-close" class="text-slate-500 hover:text-slate-800 transition-colors">
-                    <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                        <line x1="18" y1="6" x2="6" y2="18"></line>
-                        <line x1="6" y1="6" x2="18" y2="18"></line>
-                    </svg>
-                </button>
-            </div>
-            <div id="trig-body">
-                <!-- 테이블이 JS로 생성되어 들어갈 위치 -->
-            </div>
-        </div>
-    </div>
-
-    <div id="message-box">틀렸습니다!<br><span class="text-sm font-normal mt-2 block text-gray-300">다시 계산해 보세요.</span></div>
-
-    <div id="success-overlay">
-        <h1 class="text-4xl md:text-5xl font-extrabold text-transparent bg-clip-text bg-gradient-to-r from-green-400 to-blue-500 mb-4 drop-shadow-lg">
-            탈출 성공!
-        </h1>
-        <p class="text-lg md:text-xl text-white mb-8 font-bold">정확한 건물의 높이를 구하여 하안중학교 문이 열렸습니다.</p>
-        <button id="btn-next-stage" class="px-6 py-3 bg-white text-slate-900 rounded-full font-bold hover:bg-slate-200 transition-colors shadow-lg" style="color: #1e293b;">
-            2단계로 이동하기 ➔
-        </button>
     </div>
 
     <script>
-        // State variables
-        let observerHeight = 1.6;
-        let distance = 20.0;
-        let angle = 35;
-
-        // Escape Room Game State
-        let isEscaped = false;
-        let leftSlidingDoor = null;
-        let rightSlidingDoor = null;
-        let doorInitialXLeft = 0;
-        let doorInitialXRight = 0;
-        let doorSlideProgress = 0;
-
-        // Three.js setup
-        const container = document.getElementById('canvas-container');
-        const scene = new THREE.Scene();
-        scene.background = new THREE.Color(0x87CEEB); 
-        scene.fog = new THREE.FogExp2(0x87CEEB, 0.005);
-
-        // 부모 컨테이너 크기에 맞춰 카메라 초기화 (반응형)
-        const camera = new THREE.PerspectiveCamera(55, container.clientWidth / container.clientHeight, 0.1, 1000);
+        // -------------------------------------------------------------
+        // 설정 및 상태 변수
+        // -------------------------------------------------------------
+        // 제공해주신 Google Apps Script 웹 앱 URL을 여기에 넣습니다.
+        const GOOGLE_SCRIPT_URL = 'https://script.google.com/macros/s/AKfycby0EHJF60iAz62aqpV_9fKSi0KlzGPXzMAlHgLbq0J-w2WJyD56ce7hsID2i-DPE4r_4g/exec';
         
-        const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: false });
-        renderer.setSize(container.clientWidth, container.clientHeight);
-        renderer.setPixelRatio(window.devicePixelRatio);
-        renderer.shadowMap.enabled = true;
-        renderer.shadowMap.type = THREE.PCFSoftShadowMap;
-        container.appendChild(renderer.domElement);
-
-        const controls = new THREE.OrbitControls(camera, renderer.domElement);
-        controls.enableDamping = true;
-        controls.dampingFactor = 0.05;
-        controls.maxPolarAngle = Math.PI / 2 - 0.05; 
-        controls.minDistance = 5;
-        controls.maxDistance = 150;
-        
-        // Lighting
-        const ambientLight = new THREE.AmbientLight(0xffffff, 0.5);
-        scene.add(ambientLight);
-
-        const hemiLight = new THREE.HemisphereLight(0xffffff, 0x444444, 0.4);
-        hemiLight.position.set(0, 200, 0);
-        scene.add(hemiLight);
-
-        const dirLight = new THREE.DirectionalLight(0xffffff, 0.8);
-        dirLight.position.set(50, 100, 80);
-        dirLight.castShadow = true;
-        dirLight.shadow.mapSize.width = 2048;
-        dirLight.shadow.mapSize.height = 2048;
-        dirLight.shadow.camera.near = 0.5;
-        dirLight.shadow.camera.far = 250;
-        dirLight.shadow.camera.left = -60;
-        dirLight.shadow.camera.right = 60;
-        dirLight.shadow.camera.top = 60;
-        dirLight.shadow.camera.bottom = -60;
-        dirLight.shadow.bias = -0.001;
-        scene.add(dirLight);
-
-        // Ground
-        const groundGeo = new THREE.PlaneGeometry(300, 300);
-        const groundMat = new THREE.MeshStandardMaterial({ 
-            color: 0xd2b48c,
-            roughness: 0.9,
-            metalness: 0.05
-        });
-        const ground = new THREE.Mesh(groundGeo, groundMat);
-        ground.rotation.x = -Math.PI / 2;
-        ground.receiveShadow = true;
-        scene.add(ground);
-
-        // Building Materials
-        const mainWallColor = 0x8c8c8c; 
-        const sideWallColor = 0xa0a0a0; 
-        const windowColor = 0x87cefa; 
-        const frameColor = 0xffffff; 
-        const bluePanelColor = 0x1e3a8a; 
-        const yellowStructColor = 0xfacc15; 
-        const roofColor = 0x4a5568; 
-
-        const matWall = new THREE.MeshStandardMaterial({ color: mainWallColor, roughness: 0.8 });
-        const matSideWall = new THREE.MeshStandardMaterial({ color: sideWallColor, roughness: 0.7 });
-        const matWindow = new THREE.MeshStandardMaterial({ color: windowColor, roughness: 0.1, metalness: 0.7 });
-        const matFrame = new THREE.MeshStandardMaterial({ color: frameColor, roughness: 0.5 });
-        const matBluePanel = new THREE.MeshStandardMaterial({ color: bluePanelColor, roughness: 0.4 });
-        const matYellow = new THREE.MeshStandardMaterial({ color: yellowStructColor, roughness: 0.5 });
-        const matRoof = new THREE.MeshStandardMaterial({ color: roofColor, roughness: 0.9 });
-
-        const buildingGroup = new THREE.Group();
-        const bldgWidth = 80;
-        const baseHeight = 18;
-        const bldgDepth = 15;
-        const bldgZ = 0; 
-
-        const leftWingGeo = new THREE.BoxGeometry(25, baseHeight, bldgDepth);
-        const leftWing = new THREE.Mesh(leftWingGeo, matWall);
-        leftWing.position.set(-20, baseHeight/2, bldgZ);
-        leftWing.castShadow = true; leftWing.receiveShadow = true;
-        buildingGroup.add(leftWing);
-
-        const rightWingGeo = new THREE.BoxGeometry(25, baseHeight, bldgDepth);
-        const rightWing = new THREE.Mesh(rightWingGeo, matWall);
-        rightWing.position.set(20, baseHeight/2, bldgZ);
-        rightWing.castShadow = true; rightWing.receiveShadow = true;
-        buildingGroup.add(rightWing);
-
-        const sideBuildingGeo = new THREE.BoxGeometry(10, baseHeight, bldgDepth + 2);
-        const sideBuilding = new THREE.Mesh(sideBuildingGeo, matSideWall);
-        sideBuilding.position.set(-37.5, baseHeight/2, bldgZ + 1);
-        sideBuilding.castShadow = true; sideBuilding.receiveShadow = true;
-        buildingGroup.add(sideBuilding);
-
-        const rightSideBuilding = new THREE.Mesh(sideBuildingGeo, matSideWall);
-        rightSideBuilding.position.set(37.5, baseHeight/2, bldgZ + 1);
-        rightSideBuilding.castShadow = true; rightSideBuilding.receiveShadow = true;
-        buildingGroup.add(rightSideBuilding);
-
-        const centerWidth = 15;
-        const centerHeight = baseHeight + 3;
-        const centerPanelGeo = new THREE.BoxGeometry(centerWidth, centerHeight, bldgDepth + 1);
-        const centerPanel = new THREE.Mesh(centerPanelGeo, matBluePanel);
-        centerPanel.position.set(0, centerHeight/2, bldgZ + 0.5);
-        centerPanel.castShadow = true; centerPanel.receiveShadow = true;
-        buildingGroup.add(centerPanel);
-
-        const mainRoofGeo = new THREE.BoxGeometry(bldgWidth, 1, bldgDepth + 1);
-        const mainRoof = new THREE.Mesh(mainRoofGeo, matRoof);
-        mainRoof.position.set(0, baseHeight + 0.5, bldgZ);
-        buildingGroup.add(mainRoof);
-
-        const sideRoofGeo = new THREE.BoxGeometry(11, 1, bldgDepth + 3);
-        const sideRoof = new THREE.Mesh(sideRoofGeo, matRoof);
-        sideRoof.position.set(-37.5, baseHeight + 0.5, bldgZ + 1);
-        buildingGroup.add(sideRoof);
-
-        const rightSideRoof = new THREE.Mesh(sideRoofGeo, matRoof);
-        rightSideRoof.position.set(37.5, baseHeight + 0.5, bldgZ + 1);
-        buildingGroup.add(rightSideRoof);
-
-        const awningWidth = 18;
-        const awningDepth = 8;
-        const awningGeo = new THREE.BoxGeometry(awningWidth, 2, awningDepth);
-        const awning = new THREE.Mesh(awningGeo, matBluePanel);
-        awning.position.set(0, 5, bldgZ + bldgDepth/2 + awningDepth/2 - 1);
-        awning.castShadow = true;
-        buildingGroup.add(awning);
-
-        const pillarGeo = new THREE.CylinderGeometry(0.5, 0.5, 5, 8);
-        const pillarMat = new THREE.MeshStandardMaterial({color: 0xc19a6b});
-        for(let i=-1; i<=1; i+=2) {
-            const pillar = new THREE.Mesh(pillarGeo, pillarMat);
-            pillar.position.set(i * (awningWidth/2 - 1), 2.5, bldgZ + bldgDepth/2 + awningDepth - 2);
-            pillar.castShadow = true;
-            buildingGroup.add(pillar);
-        }
-
-        const entranceGroup = new THREE.Group();
-        const porchGeo = new THREE.BoxGeometry(14, 0.4, 4);
-        const porchMat = new THREE.MeshStandardMaterial({ color: 0x94a3b8, roughness: 0.6 });
-        const porch = new THREE.Mesh(porchGeo, porchMat);
-        porch.position.set(0, 0.2, bldgZ + bldgDepth/2 + 1.5);
-        porch.receiveShadow = true;
-        entranceGroup.add(porch);
-
-        const stepGeo = new THREE.BoxGeometry(15, 0.2, 1);
-        const step = new THREE.Mesh(stepGeo, porchMat);
-        step.position.set(0, 0.1, bldgZ + bldgDepth/2 + 3.6);
-        step.receiveShadow = true;
-        entranceGroup.add(step);
-
-        const doorFrameMat = new THREE.MeshStandardMaterial({ color: 0x1e293b, roughness: 0.3 });
-        const doorGlassMat = new THREE.MeshStandardMaterial({ color: 0x93c5fd, roughness: 0.1, metalness: 0.8, transparent: true, opacity: 0.85 });
-        const handleMat = new THREE.MeshStandardMaterial({ color: 0xe2e8f0, metalness: 0.9, roughness: 0.2 });
-
-        const doorWallGeo = new THREE.BoxGeometry(12, 3.2, 0.2);
-        const doorWallFrame = new THREE.Mesh(doorWallGeo, doorFrameMat);
-        doorWallFrame.position.set(0, 1.8, bldgZ + bldgDepth/2 + 0.1);
-        entranceGroup.add(doorWallFrame);
-
-        const totalDoors = 4;
-        const doorWidth = 2.4;
-        const doorHeight = 2.8;
-        const startX = -((totalDoors - 1) * (doorWidth + 0.2)) / 2;
-
-        function createDoorTexture(isLeft) {
-            const canvas = document.createElement('canvas');
-            canvas.width = 128;
-            canvas.height = 256;
-            const ctx = canvas.getContext('2d');
-            
-            const gradient = ctx.createLinearGradient(0, 0, 128, 256);
-            gradient.addColorStop(0, '#93c5fd');
-            gradient.addColorStop(1, '#3b82f6');
-            ctx.fillStyle = gradient;
-            ctx.fillRect(0, 0, 128, 256);
-            
-            ctx.strokeStyle = '#1e293b';
-            ctx.lineWidth = 12;
-            ctx.strokeRect(0, 0, 128, 256);
-            
-            if (isLeft) ctx.strokeRect(128 - 6, 0, 6, 256);
-            else ctx.strokeRect(0, 0, 6, 256);
-
-            return new THREE.CanvasTexture(canvas);
-        }
-
-        const leftDoorTex = createDoorTexture(true);
-        const rightDoorTex = createDoorTexture(false);
-        const matLeftDoor = new THREE.MeshStandardMaterial({ map: leftDoorTex, metalness: 0.3, roughness: 0.4, transparent: true, opacity: 0.95 });
-        const matRightDoor = new THREE.MeshStandardMaterial({ map: rightDoorTex, metalness: 0.3, roughness: 0.4, transparent: true, opacity: 0.95 });
-
-        for (let i = 0; i < totalDoors; i++) {
-            const dx = startX + i * (doorWidth + 0.2);
-            const doorGroup = new THREE.Group();
-            
-            let currentDoorMat = doorGlassMat;
-            if (i === 1) currentDoorMat = matLeftDoor;
-            else if (i === 2) currentDoorMat = matRightDoor;
-
-            const glass = new THREE.Mesh(new THREE.PlaneGeometry(doorWidth - 0.1, doorHeight - 0.1), currentDoorMat);
-            glass.position.set(0, 0, 0.02);
-            doorGroup.add(glass);
-
-            const frameBorder = new THREE.Mesh(new THREE.BoxGeometry(doorWidth, doorHeight, 0.08), doorFrameMat);
-            doorGroup.add(frameBorder);
-
-            const handleX = (i % 2 === 0) ? doorWidth / 2 - 0.3 : -doorWidth / 2 + 0.3;
-            const handle = new THREE.Mesh(new THREE.CylinderGeometry(0.03, 0.03, 0.8, 8), handleMat);
-            handle.position.set(handleX, -0.2, 0.08);
-            doorGroup.add(handle);
-
-            doorGroup.position.set(dx, 1.8, bldgZ + bldgDepth/2 + 0.2);
-            entranceGroup.add(doorGroup);
-
-            if (i === 1) {
-                leftSlidingDoor = doorGroup;
-                doorInitialXLeft = dx;
-            } else if (i === 2) {
-                rightSlidingDoor = doorGroup;
-                doorInitialXRight = dx;
-            }
-        }
-        buildingGroup.add(entranceGroup);
-
-        function createTruss(xOffset, yOffset, scaleX, scaleY) {
-            const trussGroup = new THREE.Group();
-            const beamThickness = 0.6;
-            const mat = matYellow;
-
-            const hBeamGeo = new THREE.BoxGeometry(10 * scaleX, beamThickness, beamThickness);
-            const vBeamGeo = new THREE.BoxGeometry(beamThickness, 6 * scaleY, beamThickness);
-            
-            const bottomBeam = new THREE.Mesh(hBeamGeo, mat);
-            trussGroup.add(bottomBeam);
-            const topBeam = new THREE.Mesh(hBeamGeo, mat);
-            topBeam.position.y = 6 * scaleY;
-            trussGroup.add(topBeam);
-            const leftBeam = new THREE.Mesh(vBeamGeo, mat);
-            leftBeam.position.set(-5 * scaleX, 3 * scaleY, 0);
-            trussGroup.add(leftBeam);
-            const rightBeam = new THREE.Mesh(vBeamGeo, mat);
-            rightBeam.position.set(5 * scaleX, 3 * scaleY, 0);
-            trussGroup.add(rightBeam);
-
-            const diagLength = Math.sqrt(Math.pow(10*scaleX, 2) + Math.pow(6*scaleY, 2));
-            const diagAngle = Math.atan2(6*scaleY, 10*scaleX);
-            const diagBeamGeo = new THREE.BoxGeometry(diagLength, beamThickness, beamThickness);
-            
-            const diag1 = new THREE.Mesh(diagBeamGeo, mat);
-            diag1.position.set(0, 3*scaleY, 0);
-            diag1.rotation.z = diagAngle;
-            trussGroup.add(diag1);
-
-            const diag2 = new THREE.Mesh(diagBeamGeo, mat);
-            diag2.position.set(0, 3*scaleY, 0);
-            diag2.rotation.z = -diagAngle;
-            trussGroup.add(diag2);
-
-            trussGroup.position.set(xOffset, yOffset, bldgZ + bldgDepth/2 + 0.5);
-            return trussGroup;
-        }
-
-        buildingGroup.add(createTruss(-16.9, 2, 0.85, 0.8));
-        buildingGroup.add(createTruss(-16.9, 6.8, 0.85, 0.8));
-        buildingGroup.add(createTruss(16.9, 2, 0.85, 0.8));
-        buildingGroup.add(createTruss(16.9, 6.8, 0.85, 0.8));
-
-        function createMultiPaneWindow(width, height) {
-            const winGroup = new THREE.Group();
-            const frameThickness = 0.12;
-            const casingMat = matFrame;
-            
-            const glassMesh = new THREE.Mesh(new THREE.PlaneGeometry(width, height), matWindow);
-            winGroup.add(glassMesh);
-
-            const topFrame = new THREE.Mesh(new THREE.BoxGeometry(width + 0.1, frameThickness, 0.1), casingMat);
-            topFrame.position.y = height / 2; winGroup.add(topFrame);
-            const bottomFrame = new THREE.Mesh(new THREE.BoxGeometry(width + 0.1, frameThickness, 0.1), casingMat);
-            bottomFrame.position.y = -height / 2; winGroup.add(bottomFrame);
-            const leftFrame = new THREE.Mesh(new THREE.BoxGeometry(frameThickness, height, 0.1), casingMat);
-            leftFrame.position.x = -width / 2; winGroup.add(leftFrame);
-            const rightFrame = new THREE.Mesh(new THREE.BoxGeometry(frameThickness, height, 0.1), casingMat);
-            rightFrame.position.x = width / 2; winGroup.add(rightFrame);
-
-            const hMullion = new THREE.Mesh(new THREE.BoxGeometry(width, 0.06, 0.08), casingMat);
-            hMullion.position.y = 0.1; winGroup.add(hMullion);
-
-            for(let i=1; i<=3; i++) {
-                const vMullion = new THREE.Mesh(new THREE.BoxGeometry(0.06, height, 0.08), casingMat);
-                vMullion.position.x = -width/2 + (width/4)*i;
-                winGroup.add(vMullion);
-            }
-            return winGroup;
-        }
-
-        function createWindows(group, startX, startY, floors, cols, spacingX, spacingY, zPos, winWidth = 3.2, winHeight = 2.0) {
-            for(let f = 0; f < floors; f++) {
-                for(let c = 0; c < cols; c++) {
-                    const windowInst = createMultiPaneWindow(winWidth, winHeight);
-                    windowInst.position.set(startX + c * spacingX, startY + f * spacingY, zPos);
-                    group.add(windowInst);
-                }
-            }
-        }
-
-        createWindows(buildingGroup, -28.5, 4.0, 4, 4, 5.8, 3.4, bldgZ + bldgDepth/2 + 0.08, 4.2, 2.1);
-        createWindows(buildingGroup, 11.1, 4.0, 4, 4, 5.8, 3.4, bldgZ + bldgDepth/2 + 0.08, 4.2, 2.1);
-        createWindows(buildingGroup, -40, 4.0, 4, 2, 4.2, 3.4, bldgZ + 1 + (bldgDepth+2)/2 + 0.08, 3.2, 2.1);
-        createWindows(buildingGroup, 35.8, 4.0, 4, 2, 4.2, 3.4, bldgZ + 1 + (bldgDepth+2)/2 + 0.08, 3.2, 2.1);
-        createWindows(buildingGroup, -3.8, 7.8, 3, 2, 7.6, 3.2, bldgZ + 0.5 + (bldgDepth+1)/2 + 0.08, 3.2, 1.9);
-        
-        function createKoreanTextSprite(text, fontSize = 60) {
-            const canvas = document.createElement('canvas');
-            const context = canvas.getContext('2d');
-            canvas.width = 512; canvas.height = 128;
-            context.font = `bold ${fontSize}px sans-serif`;
-            context.textAlign = 'center'; context.textBaseline = 'middle';
-            context.fillStyle = '#ffffff'; 
-            context.fillText(text, canvas.width / 2, canvas.height / 2 - 10);
-            context.font = `bold ${fontSize * 0.4}px sans-serif`;
-            context.fillText("Haan Middle School", canvas.width / 2, canvas.height / 2 + 30);
-            const texture = new THREE.CanvasTexture(canvas);
-            texture.minFilter = THREE.LinearFilter;
-            const material = new THREE.MeshBasicMaterial({ map: texture, transparent: true, depthWrite: false });
-            return new THREE.Mesh(new THREE.PlaneGeometry(16, 4), material);
-        }
-
-        const signSprite = createKoreanTextSprite("하안중학교");
-        signSprite.position.set(0, centerHeight - 2, bldgZ + 0.5 + (bldgDepth+1)/2 + 0.1); 
-        buildingGroup.add(signSprite);
-        scene.add(buildingGroup);
-
-        const visualGroup = new THREE.Group();
-        scene.add(visualGroup);
-
-        const observerGroup = new THREE.Group();
-        const matSkin = new THREE.MeshStandardMaterial({ color: 0xffdbac, roughness: 0.6 });
-        const matHair = new THREE.MeshStandardMaterial({ color: 0x2c1d11, roughness: 0.9 });
-        const matShirt = new THREE.MeshStandardMaterial({ color: 0x3182ce, roughness: 0.7 });
-        const matPants = new THREE.MeshStandardMaterial({ color: 0x2d3748, roughness: 0.8 });
-        const matShoes = new THREE.MeshStandardMaterial({ color: 0x1a202c, roughness: 0.5 });
-        const matClinometer = new THREE.MeshStandardMaterial({ color: 0xe53e3e, roughness: 0.4 });
-
-        const shoeGeo = new THREE.BoxGeometry(0.14, 0.08, 0.24);
-        const leftShoe = new THREE.Mesh(shoeGeo, matShoes); leftShoe.position.set(-0.12, 0.04, 0.02); leftShoe.castShadow = true; observerGroup.add(leftShoe);
-        const rightShoe = new THREE.Mesh(shoeGeo, matShoes); rightShoe.position.set(0.12, 0.04, 0.02); rightShoe.castShadow = true; observerGroup.add(rightShoe);
-
-        const legGeo = new THREE.CylinderGeometry(0.07, 0.06, 0.65, 12);
-        const leftLeg = new THREE.Mesh(legGeo, matPants); leftLeg.position.set(-0.12, 0.40, 0); leftLeg.castShadow = true; observerGroup.add(leftLeg);
-        const rightLeg = new THREE.Mesh(legGeo, matPants); rightLeg.position.set(0.12, 0.40, 0); rightLeg.castShadow = true; observerGroup.add(rightLeg);
-
-        const torsoMesh = new THREE.Mesh(new THREE.BoxGeometry(0.38, 0.52, 0.22), matShirt); torsoMesh.position.set(0, 0.98, 0); torsoMesh.castShadow = true; observerGroup.add(torsoMesh);
-        const neckMesh = new THREE.Mesh(new THREE.CylinderGeometry(0.05, 0.06, 0.08, 12), matSkin); neckMesh.position.set(0, 1.28, 0); observerGroup.add(neckMesh);
-        const headMesh = new THREE.Mesh(new THREE.SphereGeometry(0.13, 16, 16), matSkin); headMesh.position.set(0, 1.40, 0); headMesh.castShadow = true; observerGroup.add(headMesh);
-
-        const hairGroup = new THREE.Group();
-        const mainHair = new THREE.Mesh(new THREE.SphereGeometry(0.138, 16, 16, 0, Math.PI * 2, 0, Math.PI * 0.6), matHair); mainHair.rotation.x = -0.2; hairGroup.add(mainHair);
-        const frontBangs = new THREE.Mesh(new THREE.BoxGeometry(0.14, 0.06, 0.08), matHair); frontBangs.position.set(0, 0.06, -0.09); frontBangs.rotation.x = 0.2; hairGroup.add(frontBangs);
-        hairGroup.position.set(0, 1.42, 0); observerGroup.add(hairGroup);
-
-        const armGeo = new THREE.CylinderGeometry(0.045, 0.04, 0.45, 12);
-        const leftArm = new THREE.Mesh(armGeo, matShirt); leftArm.position.set(-0.24, 0.98, 0); leftArm.rotation.z = 0.15; leftArm.castShadow = true; observerGroup.add(leftArm);
-        const leftHand = new THREE.Mesh(new THREE.SphereGeometry(0.04, 8, 8), matSkin); leftHand.position.set(-0.27, 0.73, 0); observerGroup.add(leftHand);
-
-        const rightUpperArm = new THREE.Mesh(armGeo, matShirt); rightUpperArm.position.set(0.22, 1.05, -0.08); rightUpperArm.rotation.x = -1.2; rightUpperArm.rotation.z = -0.2; rightUpperArm.castShadow = true; observerGroup.add(rightUpperArm);
-        const rightHand = new THREE.Mesh(new THREE.SphereGeometry(0.04, 8, 8), matSkin); rightHand.position.set(0.18, 1.25, -0.22); observerGroup.add(rightHand);
-
-        const clinometer = new THREE.Mesh(new THREE.CylinderGeometry(0.08, 0.08, 0.02, 16, 1, false, 0, Math.PI), matClinometer);
-        clinometer.rotation.set(Math.PI / 2, 0, Math.PI / 2); clinometer.position.set(0.12, 1.38, -0.25); observerGroup.add(clinometer);
-
-        scene.add(observerGroup);
-
-        const sightLine = new THREE.Line(new THREE.BufferGeometry(), new THREE.LineBasicMaterial({ color: 0xe53e3e, linewidth: 3 }));
-        const horizontalLine = new THREE.Line(new THREE.BufferGeometry(), new THREE.LineDashedMaterial({ color: 0x4a5568, linewidth: 2, dashSize: 0.5, gapSize: 0.3 }));
-        const h1Line = new THREE.Line(new THREE.BufferGeometry(), new THREE.LineBasicMaterial({ color: 0x3182ce, linewidth: 3 }));
-        const h2Line = new THREE.Line(new THREE.BufferGeometry(), new THREE.LineBasicMaterial({ color: 0x3182ce, linewidth: 3 }));
-        const distLine = new THREE.Line(new THREE.BufferGeometry(), new THREE.LineBasicMaterial({ color: 0x38a169, linewidth: 3 }));
-        const arcLine = new THREE.Line(new THREE.BufferGeometry(), new THREE.LineBasicMaterial({ color: 0xe53e3e }));
-        
-        visualGroup.add(sightLine); visualGroup.add(horizontalLine); visualGroup.add(h1Line); 
-        visualGroup.add(h2Line); visualGroup.add(distLine); visualGroup.add(arcLine);
-
-        const bldgFrontZ = bldgZ + bldgDepth/2;
-        
-        const lockGroup = new THREE.Group();
-        const bodyGeo = new THREE.BoxGeometry(2, 1.5, 0.8);
-        const bodyMat = new THREE.MeshStandardMaterial({ color: 0xffd700, metalness: 0.8, roughness: 0.3 });
-        const lockBody = new THREE.Mesh(bodyGeo, bodyMat);
-        lockGroup.add(lockBody);
-        
-        const keyholeGeo = new THREE.CylinderGeometry(0.15, 0.15, 0.85, 16);
-        const keyholeMat = new THREE.MeshBasicMaterial({ color: 0x111111 });
-        const keyholeTop = new THREE.Mesh(keyholeGeo, keyholeMat);
-        keyholeTop.rotation.x = Math.PI / 2; keyholeTop.position.set(0, 0.1, 0);
-        lockGroup.add(keyholeTop);
-        
-        const keyholeBottomGeo = new THREE.BoxGeometry(0.15, 0.4, 0.85);
-        const keyholeBottom = new THREE.Mesh(keyholeBottomGeo, keyholeMat);
-        keyholeBottom.position.set(0, -0.2, 0);
-        lockGroup.add(keyholeBottom);
-
-        const shackleGeo = new THREE.TorusGeometry(0.7, 0.15, 16, 32, Math.PI);
-        const shackleMat = new THREE.MeshStandardMaterial({ color: 0xcccccc, metalness: 0.9, roughness: 0.2 });
-        const shackle = new THREE.Mesh(shackleGeo, shackleMat); shackle.position.set(0, 0.75, 0);
-        
-        const shackleLegGeo = new THREE.CylinderGeometry(0.15, 0.15, 0.5);
-        const leftLegLock = new THREE.Mesh(shackleLegGeo, shackleMat); leftLegLock.position.set(-0.7, 0.5, 0);
-        const rightLegLock = new THREE.Mesh(shackleLegGeo, shackleMat); rightLegLock.position.set(0.7, 0.5, 0);
-        
-        const shackleGroup = new THREE.Group();
-        shackleGroup.add(shackle); shackleGroup.add(leftLegLock); shackleGroup.add(rightLegLock);
-        lockGroup.add(shackleGroup);
-        
-        lockGroup.position.set(0, 1.8, bldgFrontZ + 0.3);
-        lockGroup.scale.set(1.5, 1.5, 1.5);
-        scene.add(lockGroup);
-
-        let unlockAnimationProgress = 0;
-
-        function updateVisuals() {
-            const scaleFactor = observerHeight / 1.40; 
-            observerGroup.scale.set(scaleFactor, scaleFactor, scaleFactor);
-            
-            const obsZ = bldgFrontZ + distance;
-            observerGroup.position.set(0, 0, obsZ);
-
-            const eyePos = new THREE.Vector3(0, observerHeight, obsZ);
-            const angleRad = THREE.MathUtils.degToRad(angle);
-            const calculatedH2 = distance * Math.tan(angleRad);
-            const hitPointY = observerHeight + calculatedH2;
-            
-            const targetPos = new THREE.Vector3(0, hitPointY, bldgFrontZ);
-            const horizTargetPos = new THREE.Vector3(0, observerHeight, bldgFrontZ);
-
-            sightLine.geometry.setFromPoints([eyePos, targetPos]);
-            horizontalLine.geometry.setFromPoints([eyePos, horizTargetPos]);
-            horizontalLine.computeLineDistances();
-
-            h1Line.geometry.setFromPoints([new THREE.Vector3(0, 0, bldgFrontZ + 0.1), new THREE.Vector3(0, observerHeight, bldgFrontZ + 0.1)]);
-            h2Line.geometry.setFromPoints([new THREE.Vector3(0, observerHeight, bldgFrontZ + 0.1), new THREE.Vector3(0, hitPointY, bldgFrontZ + 0.1)]);
-            distLine.geometry.setFromPoints([new THREE.Vector3(0, 0.1, obsZ), new THREE.Vector3(0, 0.1, bldgFrontZ)]);
-
-            const arcRadius = Math.min(distance * 0.2, 3);
-            const arcPoints = [];
-            for (let i = 0; i <= angle; i++) {
-                const a = THREE.MathUtils.degToRad(i);
-                arcPoints.push(new THREE.Vector3(0, observerHeight + Math.sin(a) * arcRadius, obsZ - Math.cos(a) * arcRadius));
-            }
-            arcLine.geometry.setFromPoints(arcPoints);
-
-            const elHeight = document.getElementById('val-height');
-            if (elHeight) elHeight.innerText = observerHeight.toFixed(2) + ' m';
-            
-            const elDist = document.getElementById('val-distance');
-            if (elDist) elDist.innerText = distance.toFixed(1) + ' m';
-            
-            const elAngle = document.getElementById('val-angle');
-            if (elAngle) elAngle.innerText = angle + '°';
-        }
-
-        function getMaxAngleDeg() {
-            const BUILDING_MAX_HEIGHT = 21.0; 
-            const maxH2 = BUILDING_MAX_HEIGHT - observerHeight;
-            const maxAngleRad = Math.atan(maxH2 / distance);
-            return Math.floor(THREE.MathUtils.radToDeg(maxAngleRad));
-        }
-
-        function updateMaxAngle() {
-            const maxAngleDeg = getMaxAngleDeg();
-            const sliderAngle = document.getElementById('slider-angle');
-            if (sliderAngle) {
-                sliderAngle.max = maxAngleDeg;
-                if (angle > maxAngleDeg) {
-                    angle = maxAngleDeg;
-                    sliderAngle.value = angle;
-                }
-            }
-        }
-
-        window.addEventListener('DOMContentLoaded', () => {
-            const sliderHeight = document.getElementById('slider-height');
-            if (sliderHeight) {
-                sliderHeight.value = (1.5 + Math.random() * 0.4).toFixed(2);
-                sliderHeight.dispatchEvent(new Event('input'));
-            }
-            
-            const sliderDist = document.getElementById('slider-distance');
-            if (sliderDist) {
-                sliderDist.value = (15 + Math.random() * 20).toFixed(1);
-                sliderDist.dispatchEvent(new Event('input'));
-            }
-            
-            updateMaxAngle();
-            
-            const sliderAngle = document.getElementById('slider-angle');
-            if (sliderAngle) {
-                const maxAngleDeg = getMaxAngleDeg();
-                const minAngle = 10;
-                const randomAngle = Math.floor(minAngle + Math.random() * Math.max(1, (maxAngleDeg - minAngle - 5)));
-                
-                sliderAngle.value = randomAngle;
-                sliderAngle.dispatchEvent(new Event('input'));
-            }
-        });
-
-        function generateTrigTable() {
-            let html = '<table class="trig-table">';
-            html += '<thead><tr><th>각도(θ)</th><th>sin(θ)</th><th>cos(θ)</th><th>tan(θ)</th></tr></thead>';
-            html += '<tbody>';
-            for (let i = 0; i <= 90; i++) {
-                const rad = i * Math.PI / 180;
-                const sin = Math.sin(rad).toFixed(4);
-                const cos = Math.cos(rad).toFixed(4);
-                const tan = i === 90 ? '∞' : Math.tan(rad).toFixed(4);
-                
-                const isCurrentAngle = (i === angle);
-                const highlightStyle = isCurrentAngle ? 'style="background-color: #bfdbfe;"' : '';
-                const textStyle = isCurrentAngle ? 'font-bold text-blue-800' : 'text-slate-600';
-                
-                html += `<tr id="trig-row-${i}" ${highlightStyle}>
-                    <td class="font-bold text-slate-700">${i}°</td>
-                    <td class="${textStyle}">${sin}</td>
-                    <td class="${textStyle}">${cos}</td>
-                    <td class="${textStyle} ${isCurrentAngle ? '' : 'font-medium'}">${tan}</td>
-                </tr>`;
-            }
-            html += '</tbody></table>';
-            document.getElementById('trig-body').innerHTML = html;
-        }
-
-        document.getElementById('trig-btn').addEventListener('click', () => {
-            generateTrigTable();
-            const modal = document.getElementById('trig-modal');
-            modal.style.display = 'flex';
-            setTimeout(() => {
-                const row = document.getElementById(`trig-row-${angle}`);
-                if (row) row.scrollIntoView({ behavior: 'auto', block: 'center' });
-            }, 10);
-        });
-
-        document.getElementById('trig-close').addEventListener('click', () => {
-            document.getElementById('trig-modal').style.display = 'none';
-        });
-        
-        document.getElementById('trig-modal').addEventListener('click', (e) => {
-            if (e.target.id === 'trig-modal') e.target.style.display = 'none';
-        });
-
-        document.getElementById('slider-height').addEventListener('input', (e) => {
-            observerHeight = parseFloat(e.target.value);
-            updateMaxAngle(); updateVisuals();
-        });
-
-        document.getElementById('slider-distance').addEventListener('input', (e) => {
-            distance = parseFloat(e.target.value);
-            updateMaxAngle(); updateVisuals();
-        });
-
-        document.getElementById('slider-angle').addEventListener('input', (e) => {
-            angle = parseInt(e.target.value);
-            updateVisuals();
-        });
-
-        document.getElementById('btn-submit').addEventListener('click', () => {
-            const inputVal = parseFloat(document.getElementById('user-answer').value);
-            if (isNaN(inputVal)) {
-                showMessage("오류", "숫자 형태의 값을 입력해주세요!");
-                return;
-            }
-
-            const maxAngleDeg = getMaxAngleDeg();
-            if (angle < maxAngleDeg) {
-                showMessage("각도 설정 필요!", `올려다보는 각도를 건물 꼭대기(최대 각도: <b>${maxAngleDeg}°</b>)로 설정한 후 높이를 계산해 주세요!`);
-                return;
-            }
-
-            const correctH2 = distance * Math.tan(THREE.MathUtils.degToRad(maxAngleDeg));
-            const correctTotal = observerHeight + correctH2;
-
-            if (Math.abs(correctTotal - inputVal) <= 0.1) {
-                isEscaped = true;
-                setTimeout(() => { document.getElementById('success-overlay').style.display = 'flex'; }, 2500);
-            } else {
-                showMessage("틀렸습니다!", `최대 각도(${maxAngleDeg}°)일 때 삼각비표를 이용해 다시 계산해 보세요.<br>입력값: <b>${inputVal.toFixed(2)}m</b>`);
-            }
-        });
-
-        function showMessage(title, sub) {
-            const msgBox = document.getElementById('message-box');
-            msgBox.innerHTML = `${title}<br><span class="text-sm font-normal mt-2 block text-gray-300">${sub}</span>`;
-            msgBox.style.display = 'block';
-            setTimeout(() => { msgBox.style.display = 'none'; }, 3500);
-        }
-        
-        document.getElementById('btn-next-stage').addEventListener('click', () => {
-            alert("다음 단계로 이동합니다! (현재 파일에는 1단계만 포함되어 있습니다)");
-        });
-
-        // 부모 컨테이너 기준 사이즈 측정 (반응형 대응)
-        function resizeCanvas() {
-            const width = container.clientWidth;
-            const height = container.clientHeight;
-            camera.aspect = width / height;
-            camera.updateProjectionMatrix();
-            renderer.setSize(width, height);
-        }
-
-        window.addEventListener('resize', resizeCanvas);
-
-        camera.position.set(-25, 10, 45);
-        controls.target.set(0, 8, 15);
-        controls.update();
-
-        function animate() {
-            requestAnimationFrame(animate);
-
-            if (isEscaped) {
-                if (unlockAnimationProgress < 1) {
-                    unlockAnimationProgress += 0.02;
-                    if (unlockAnimationProgress < 0.5) {
-                        shackleGroup.position.y = (unlockAnimationProgress / 0.5) * 0.5; 
-                    } else {
-                         shackleGroup.rotation.y = ((unlockAnimationProgress - 0.5) / 0.5) * Math.PI / 2;
-                    }
-                } else if (doorSlideProgress < 2.2) {
-                    lockGroup.visible = false;
-                    doorSlideProgress += 0.03;
-                    if(leftSlidingDoor) leftSlidingDoor.position.x = doorInitialXLeft - doorSlideProgress;
-                    if(rightSlidingDoor) rightSlidingDoor.position.x = doorInitialXRight + doorSlideProgress;
-                }
-            }
-
-            controls.update();
-            renderer.render(scene, camera);
-        }
-        
-        // 브라우저 렌더링이 완료된 후 사이즈 한번 맞춰주기
-        window.onload = function() {
-            resizeCanvas();
-            animate();
+        let studentInfo = { id: '', name: '' };
+        let timing = {
+            gameStart: null,
+            stageStart: null,
+            st1Duration: 0,
+            st2Duration: 0,
+            st3Duration: 0,
+            totalDuration: 0
         };
+        let timerInterval = null;
+
+        // -------------------------------------------------------------
+        // 유틸리티 함수
+        // -------------------------------------------------------------
+        
+        // 화면 전환 함수
+        function showScreen(screenId) {
+            document.querySelectorAll('.screen').forEach(el => el.classList.remove('active'));
+            document.getElementById(screenId).classList.add('active');
+        }
+
+        // 입력 오류 시 흔들림 효과
+        function showError(inputId, errorMsgId) {
+            const inputEl = document.getElementById(inputId);
+            const msgEl = document.getElementById(errorMsgId);
+            
+            inputEl.classList.add('shake', 'border-red-500');
+            msgEl.classList.remove('hidden');
+            
+            setTimeout(() => {
+                inputEl.classList.remove('shake');
+            }, 400);
+            
+            // 입력창 다시 포커스 시 에러 표시 제거
+            inputEl.addEventListener('focus', function handler() {
+                inputEl.classList.remove('border-red-500');
+                msgEl.classList.add('hidden');
+                inputEl.removeEventListener('focus', handler);
+            });
+        }
+
+        // 시간 포맷 (초 -> MM:SS)
+        function formatTime(totalSeconds) {
+            const m = Math.floor(totalSeconds / 60).toString().padStart(2, '0');
+            const s = (totalSeconds % 60).toString().padStart(2, '0');
+            return `${m}:${s}`;
+        }
+
+        // 상단 타이머 업데이트 로직
+        function updateTimerUI() {
+            if (!timing.gameStart) return;
+            const now = new Date();
+            const elapsed = Math.floor((now - timing.gameStart) / 1000);
+            document.getElementById('timer-display').innerText = formatTime(elapsed);
+        }
+
+        // -------------------------------------------------------------
+        // 게임 진행 로직
+        // -------------------------------------------------------------
+        
+
+        // 1. 게임 시작 (로그인)
+        function startGame() {
+            const idInput = document.getElementById('input-student-id').value.trim();
+            const nameInput = document.getElementById('input-student-name').value.trim();
+            
+            if (!idInput || !nameInput) {
+                document.getElementById('login-error').classList.remove('hidden');
+                return;
+            }
+            
+            studentInfo.id = idInput;
+            studentInfo.name = nameInput;
+            
+            // 타이머 시작
+            const now = new Date();
+            timing.gameStart = now;
+            timing.stageStart = now;
+            
+            document.getElementById('timer-display').classList.remove('hidden');
+            timerInterval = setInterval(updateTimerUI, 1000);
+            
+            showScreen('screen-stage1');
+        }
+
+        // 2. 1관문 정답 체크 (정답: 32 - 2의 거듭제곱)
+        function checkStage1() {
+            const ans = document.getElementById('answer-stage1').value.trim();
+            if (ans === "32") {
+                const now = new Date();
+                // 이전 스테이지 시작점으로부터 현재까지의 초를 계산
+                timing.st1Duration = Math.floor((now - timing.stageStart) / 1000);
+                timing.stageStart = now; // 다음 관문을 위한 시작점 초기화
+                showScreen('screen-stage2');
+            } else {
+                showError('answer-stage1', 'error-stage1');
+            }
+        }
+
+        // 3. 2관문 정답 체크 (정답: 미래)
+        function checkStage2() {
+            const ans = document.getElementById('answer-stage2').value.trim();
+            if (ans === "미래") {
+                const now = new Date();
+                timing.st2Duration = Math.floor((now - timing.stageStart) / 1000);
+                timing.stageStart = now;
+                showScreen('screen-stage3');
+            } else {
+                showError('answer-stage2', 'error-stage2');
+            }
+        }
+
+        // 4. 3관문 정답 체크 (정답: 50 - APPLE 각 알파벳 순서 합 1+16+16+12+5)
+        function checkStage3() {
+            const ans = document.getElementById('answer-stage3').value.trim();
+            if (ans === "50") {
+                const now = new Date();
+                timing.st3Duration = Math.floor((now - timing.stageStart) / 1000);
+                timing.totalDuration = Math.floor((now - timing.gameStart) / 1000);
+                
+                // 타이머 정지 및 UI 숨김
+                clearInterval(timerInterval);
+                document.getElementById('timer-display').classList.add('hidden');
+                
+                showScreen('screen-result');
+                submitData(); // 구글 시트로 데이터 전송
+            } else {
+                showError('answer-stage3', 'error-stage3');
+            }
+        }
+
+        // -------------------------------------------------------------
+        // 서버 전송 로직 (fetch)
+        // -------------------------------------------------------------
+        function submitData() {
+            // 전송할 데이터 페이로드 구성 (Code.gs에서 기대하는 키 값)
+            const payload = {
+                studentId: studentInfo.id,
+                studentName: studentInfo.name,
+                stage1Time: timing.st1Duration,
+                stage2Time: timing.st2Duration,
+                stage3Time: timing.st3Duration,
+                totalTime: timing.totalDuration
+            };
+
+            // CORS 이슈 방지를 위해 text/plain으로 전송 (Code.gs는 JSON.parse로 처리 가능)
+            fetch(GOOGLE_SCRIPT_URL, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'text/plain;charset=utf-8', 
+                },
+                body: JSON.stringify(payload)
+            })
+            .then(response => response.json()) // Code.gs는 JSON 응답을 반환함
+            .then(data => {
+                if(data.status === "success") {
+                    showSuccessResult();
+                } else {
+                    throw new Error(data.message || "서버 응답 오류");
+                }
+            })
+            .catch(error => {
+                console.error('Error:', error);
+                document.getElementById('result-loading').classList.add('hidden');
+                document.getElementById('result-error').classList.remove('hidden');
+                document.getElementById('error-msg-text').innerText = "전송 실패: " + error.message + "\n인터넷 연결을 확인하세요.";
+            });
+        }
+
+        // 결과 화면 표시 렌더링
+        function showSuccessResult() {
+            document.getElementById('result-loading').classList.add('hidden');
+            document.getElementById('result-success').classList.remove('hidden');
+            document.getElementById('result-success').classList.add('flex'); // hidden 해제 후 flex 강제 적용
+            
+            document.getElementById('res-name').innerText = studentInfo.name + " (" + studentInfo.id + ")";
+            document.getElementById('res-st1').innerText = formatTime(timing.st1Duration);
+            document.getElementById('res-st2').innerText = formatTime(timing.st2Duration);
+            document.getElementById('res-st3').innerText = formatTime(timing.st3Duration);
+            document.getElementById('res-total').innerText = formatTime(timing.totalDuration);
+        }
+        
+        // 엔터키 입력 지원
+        document.getElementById('input-student-name').addEventListener('keypress', function (e) {
+            if (e.key === 'Enter') startGame();
+        });
+        document.getElementById('answer-stage1').addEventListener('keypress', function (e) {
+            if (e.key === 'Enter') checkStage1();
+        });
+        document.getElementById('answer-stage2').addEventListener('keypress', function (e) {
+            if (e.key === 'Enter') checkStage2();
+        });
+        document.getElementById('answer-stage3').addEventListener('keypress', function (e) {
+            if (e.key === 'Enter') checkStage3();
+        });
+
     </script>
 </body>
 </html>
